@@ -121,3 +121,7 @@ dist
 
 # MacOS
 .DS_Store
+
+# JetBrains
+.idea
+*.iml

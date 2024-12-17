@@ -47,7 +47,7 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
     });
   }
 
-  configureAccessory(accessory: SmartRentAccessory) {
+  configureAccessory(accessory: SmartRentAccessory): void {
     this.log.info('Loading accessory from cache:', accessory.displayName);
 
     // add the restored accessory to the accessories cache so we can track if it has already been registered
