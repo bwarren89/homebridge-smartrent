@@ -93,7 +93,10 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
       Accessory = SwitchAccessory;
     } else if (type === 'thermostat' && this.config.enableThermostats) {
       Accessory = ThermostatAccessory;
-    } else if (type === 'switch_multilevel' && this.config.enableSwitchMultiLevels) {
+    } else if (
+      type === 'switch_multilevel' &&
+      this.config.enableSwitchMultiLevels
+    ) {
       Accessory = SwitchMultilevelAccessory;
     } else {
       this.log.info(`Unknown or disabled device type: ${device.type}`);
