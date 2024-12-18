@@ -30,6 +30,14 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
   public readonly smartRentApi: SmartRentApi;
   public readonly accessories: SmartRentAccessory[] = [];
 
+  private readonly ALLOWED_DEVICE_TYPES: Set<string> = new Set([
+    'sensor_notification',
+    'entry_control',
+    'switch_binary',
+    'thermostat',
+    'switch_multilevel',
+  ]);
+
   constructor(
     public readonly log: Logger,
     public readonly config: SmartRentPlatformConfig,
@@ -67,33 +75,29 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
       | typeof SwitchAccessory
       | typeof ThermostatAccessory
       | typeof SwitchMultilevelAccessory;
-    switch (device.type) {
-      case 'sensor_notification':
-        if ('leak' in device.attributes) {
-          Accessory = LeakSensorAccessory;
-        } else {
-          this.log.error(`Unknown device type: ${device.type}`);
-          return;
-        }
-        break;
-      case 'entry_control':
-        Accessory = LockAccessory;
-        break;
-      case 'switch_binary':
-        Accessory = SwitchAccessory;
-        break;
-      // disabling theromstat intentionally, I only want the lock for my homebridge and this my lazy way of doing it
-      // case 'thermostat':
-      //   Accessory = ThermostatAccessory;
-      //   break;
-      case 'switch_multilevel':
-        Accessory = SwitchMultilevelAccessory;
-        break;
-      default:
-        this.log.error(
-          `Unknown device type: ${(device as DeviceDataUnion).type}`
-        );
-        return;
+
+    const type = device.type;
+    if(!this.ALLOWED_DEVICE_TYPES.has(type)) {
+      this.log.error(`Unknown device type: ${device.type}`);
+      return;
+    }
+    if (
+      type === 'sensor_notification' &&
+      'leak' in device.attributes &&
+      this.config.enableLeakSensors
+    ) {
+      Accessory = LeakSensorAccessory;
+    } else if (type === 'entry_control' && this.config.enableLocks) {
+      Accessory = LockAccessory;
+    } else if (type === 'switch_binary') {
+      Accessory = SwitchAccessory;
+    } else if (type === 'thermostat') {
+      Accessory = ThermostatAccessory;
+    } else if (type === 'switch_multilevel') {
+      Accessory = SwitchMultilevelAccessory;
+    } else {
+      this.log.info(`Unknown or disabled device type: ${device.type}`);
+      return;
     }
 
     // Create the accessory if it doesn't already exist
