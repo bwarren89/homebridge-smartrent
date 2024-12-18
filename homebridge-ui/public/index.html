@@ -183,23 +183,11 @@
       emailInput.setAttribute('value', email);
       passwordInput.setAttribute('value', password);
       tfaCodeInput.setAttribute('value', tfaCode);
-      enableLocksCheckbox.setAttribute('value', enableLocks ? 'on' : 'off');
-      enableThermostatsCheckbox.setAttribute(
-        'value',
-        enableThermostats ? 'on' : 'off'
-      );
-      enableLeakSensorsCheckbox.setAttribute(
-        'value',
-        enableLeakSensors ? 'on' : 'off'
-      );
-      enableSwitchesCheckbox.setAttribute(
-        'value',
-        enableSwitches ? 'on' : 'off'
-      );
-      enableSwitchMultiLevelsCheckbox.setAttribute(
-        'value',
-        enableSwitchMultiLevels ? 'on' : 'off'
-      );
+      enableLocksCheckbox.checked = enableLocks;
+      enableThermostatsCheckbox.checked = enableThermostats;
+      enableLeakSensorsCheckbox.checked = enableLeakSensors;
+      enableSwitchesCheckbox.checked = enableSwitches;
+      enableSwitchMultiLevelsCheckbox.checked = enableSwitchMultiLevels;
 
       updateLoginFormDisabled();
     };
@@ -216,11 +204,11 @@
         pluginConfig[0].email || '',
         pluginConfig[0].password || '',
         pluginConfig[0].tfaCode || '',
-        pluginConfig[0].enableLocks || true,
-        pluginConfig[0].enableThermostats || true,
-        pluginConfig[0].enableLeakSensors || true,
-        pluginConfig[0].enableSwitches || true,
-        pluginConfig[0].enableSwitchMultiLevels || true
+        pluginConfig[0].enableLocks,
+        pluginConfig[0].enableThermostats,
+        pluginConfig[0].enableLeakSensors,
+        pluginConfig[0].enableSwitches,
+        pluginConfig[0].enableSwitchMultiLevels
       );
     }
 
@@ -258,14 +246,12 @@
       if (tfaCodeInput.value) {
         pluginConfig[0].tfaCode = tfaCodeInput.value;
       }
-      pluginConfig[0].enableLocks = enableLocksCheckbox.value === 'on';
-      pluginConfig[0].enableThermostats =
-        enableThermostatsCheckbox.value === 'on';
-      pluginConfig[0].enableLeakSensors =
-        enableLeakSensorsCheckbox.value === 'on';
-      pluginConfig[0].enableSwitches = enableSwitchesCheckbox.value === 'on';
+      pluginConfig[0].enableLocks = enableLocksCheckbox.checked;
+      pluginConfig[0].enableThermostats = enableThermostatsCheckbox.checked;
+      pluginConfig[0].enableLeakSensors = enableLeakSensorsCheckbox.checked;
+      pluginConfig[0].enableSwitches = enableSwitchesCheckbox.checked;
       pluginConfig[0].enableSwitchMultiLevels =
-        enableSwitchMultiLevelsCheckbox.value === 'on';
+        enableSwitchMultiLevelsCheckbox.checked;
       await homebridge.updatePluginConfig(pluginConfig);
     });
 
