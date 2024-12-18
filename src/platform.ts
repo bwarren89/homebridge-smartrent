@@ -77,7 +77,7 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
       | typeof SwitchMultilevelAccessory;
 
     const type = device.type;
-    if(!this.ALLOWED_DEVICE_TYPES.has(type)) {
+    if (!this.ALLOWED_DEVICE_TYPES.has(type)) {
       this.log.error(`Unknown device type: ${device.type}`);
       return;
     }
