@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.0](https://github.com/jabrown93/homebridge-smartrent/compare/v1.0.2...v1.1.0) (2024-12-18)
+
+### Features
+
+* Homebridge V2 support ([2d841b5](https://github.com/jabrown93/homebridge-smartrent/commit/2d841b5782cf17e7d70f11f5158498cb90df7518))
+
+### Bug Fixes
+
+* remove beta ([feb96bf](https://github.com/jabrown93/homebridge-smartrent/commit/feb96bfe52f75814170eb423f9942ad876dea666))
+
 ## [1.0.2](https://github.com/jabrown93/homebridge-smartrent/compare/v1.0.1...v1.0.2) (2024-12-18)
 
 ### Bug Fixes
