@@ -171,25 +171,10 @@
       }
     };
 
-    const updateLoginForm = (
-      email = '',
-      password = '',
-      tfaCode = '',
-      enableLocks = true,
-      enableThermostats = true,
-      enableLeakSensors = true,
-      enableSwitches = true,
-      enableSwitchMultiLevels = true
-    ) => {
+    const updateLoginForm = (email = '', password = '', tfaCode = '') => {
       emailInput.setAttribute('value', email);
       passwordInput.setAttribute('value', password);
       tfaCodeInput.setAttribute('value', tfaCode);
-      enableLocksCheckbox.checked = enableLocks;
-      enableThermostatsCheckbox.checked = enableThermostats;
-      enableLeakSensorsCheckbox.checked = enableLeakSensors;
-      enableSwitchesCheckbox.checked = enableSwitches;
-      enableSwitchMultiLevelsCheckbox.checked = enableSwitchMultiLevels;
-
       updateLoginFormDisabled();
     };
 
@@ -201,15 +186,30 @@
       await homebridge.updatePluginConfig(pluginConfig);
     } else {
       unitNameInput.setAttribute('value', pluginConfig[0].unitName || '');
+      enableLocksCheckbox.checked =
+        pluginConfig[0].enableLocks !== undefined
+          ? pluginConfig[0].enableLocks
+          : true;
+      enableThermostatsCheckbox.checked =
+        pluginConfig[0].enableThermostats !== undefined
+          ? pluginConfig[0].enableThermostats
+          : true;
+      enableLeakSensorsCheckbox.checked =
+        pluginConfig[0].enableLeakSensors !== undefined
+          ? pluginConfig[0].enableLeakSensors
+          : true;
+      enableSwitchesCheckbox.checked =
+        pluginConfig[0].enableSwitches !== undefined
+          ? pluginConfig[0].enableSwitches
+          : true;
+      enableSwitchMultiLevelsCheckbox.checked =
+        pluginConfig[0].enableSwitchMultiLevels !== undefined
+          ? pluginConfig[0].enableSwitchMultiLevels
+          : true;
       updateLoginForm(
         pluginConfig[0].email || '',
         pluginConfig[0].password || '',
-        pluginConfig[0].tfaCode || '',
-        pluginConfig[0].enableLocks,
-        pluginConfig[0].enableThermostats,
-        pluginConfig[0].enableLeakSensors,
-        pluginConfig[0].enableSwitches,
-        pluginConfig[0].enableSwitchMultiLevels
+        pluginConfig[0].tfaCode || ''
       );
     }
 
@@ -230,6 +230,12 @@
       if (unitNameInput.value) {
         pluginConfig[0].unitName = unitNameInput.value;
       }
+      pluginConfig[0].enableLocks = enableLocksCheckbox.checked;
+      pluginConfig[0].enableThermostats = enableThermostatsCheckbox.checked;
+      pluginConfig[0].enableLeakSensors = enableLeakSensorsCheckbox.checked;
+      pluginConfig[0].enableSwitches = enableSwitchesCheckbox.checked;
+      pluginConfig[0].enableSwitchMultiLevels =
+        enableSwitchMultiLevelsCheckbox.checked;
       await homebridge.updatePluginConfig(pluginConfig);
     });
 
