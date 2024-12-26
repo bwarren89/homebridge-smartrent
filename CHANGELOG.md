@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.0](https://github.com/jabrown93/homebridge-smartrent/compare/v1.2.7...v1.3.0) (2024-12-26)
+
+### Features
+
+* Use v3 smartrent api ([b63c407](https://github.com/jabrown93/homebridge-smartrent/commit/b63c4070f6924c2caa86787185902b61ce18996a))
+
 ## [1.2.7](https://github.com/jabrown93/homebridge-smartrent/compare/v1.2.6...v1.2.7) (2024-12-19)
 
 ### Bug Fixes
