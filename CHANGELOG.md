@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.1](https://github.com/jabrown93/homebridge-smartrent/compare/v1.3.0...v1.3.1) (2024-12-26)
+
+### Bug Fixes
+
+* support tfa secret in form ([95088a3](https://github.com/jabrown93/homebridge-smartrent/commit/95088a3f00f3790ad5f7a87ad183a2938fc0ab7a))
+
 ## [1.3.0](https://github.com/jabrown93/homebridge-smartrent/compare/v1.2.7...v1.3.0) (2024-12-26)
 
 ### Features
