@@ -65,7 +65,19 @@ export class SmartRentApiClient {
     return this.authClient.getAccessToken({
       email: this.platform.config.email,
       password: this.platform.config.password,
-      tfaCode: this.platform.config.tfaCode,
+      tfaSecret: this.platform.config.tfaSecret,
+    });
+  }
+
+  /**
+   * Get the SmartRent API access token
+   * @returns Oauth access token
+   */
+  public async getWebSocketToken() {
+    return this.authClient.getWebSocketToken({
+      email: this.platform.config.email,
+      password: this.platform.config.password,
+      tfaSecret: this.platform.config.tfaSecret,
     });
   }
 
@@ -170,7 +182,7 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
    */
   private async _initializeWsClient() {
     this.platform.log.debug('WebSocket connection opening');
-    const token = String(await this.getAccessToken());
+    const token = String(await this.getWebSocketToken());
     const wsClient = new WebSocket(
       WS_API_URL +
         '?' +
@@ -206,7 +218,7 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
 
   private _handleWsClose(event: WebSocket.CloseEvent) {
     this.platform.log.debug(
-      `WebSocket connection closed: Code: ${event.code}, Reason: ${event.reason}`
+      `WebSocket connection closed: Code: ${event.code}, Reason: ${event.reason}, Event: ${event}`
     );
     this.wsClient = this._initializeWsClient();
   }

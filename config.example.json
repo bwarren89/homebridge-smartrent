@@ -11,7 +11,7 @@
       "platform": "SmartRent",
       "email": "user@example.com",
       "password": "hunter2",
-      "tfaCode": "000000",
+      "tfaSecret": "000000",
       "unitName": "A1"
     }
   ]

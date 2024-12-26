@@ -156,9 +156,10 @@ export class LockAccessory {
    */
   async handleLockEvent(event: WSEvent) {
     this.platform.log.debug('Recieved event on Lock: ', event);
+    let currentValue;
     switch (event.name) {
       case 'locked':
-        const currentValue = this._getLockStateCharacteristicValue(
+        currentValue = this._getLockStateCharacteristicValue(
           event.last_read_state === 'true'
         );
         this.service.updateCharacteristic(
@@ -173,11 +174,6 @@ export class LockAccessory {
       case 'notifications':
         break;
     }
-    // if (event.name === 'locked') {
-    //   const currentValue = this._getLockStateCharacteristicValue(event.last_read_state === 'true');
-    //   this.service.getCharacteristic(this.platform.Characteristic.LockTargetState).updateValue(currentValue);
-    //   this.service.getCharacteristic(this.platform.Characteristic.LockCurrentState).updateValue(currentValue);
-    // }
   }
 
   /**

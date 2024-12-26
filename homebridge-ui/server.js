@@ -47,7 +47,7 @@ class PluginUiServer extends HomebridgePluginUiServer {
 
   async login(payload) {
     try {
-      const { email, password, tfaCode } = payload;
+      const { email, password, tfaSecret } = payload;
       if (!email) {
         console.error('Email required');
         return { code: 401, message: 'Email required' };
@@ -60,7 +60,7 @@ class PluginUiServer extends HomebridgePluginUiServer {
       const accessToken = await authClient.getAccessToken({
         email,
         password,
-        tfaCode,
+        tfaSecret,
       });
       if (accessToken) {
         return { code: 200 };
@@ -68,7 +68,7 @@ class PluginUiServer extends HomebridgePluginUiServer {
       if (authClient.isTfaSession) {
         return {
           code: 403,
-          message: tfaCode ? 'Invalid 2FA code' : '2FA code required',
+          message: tfaSecret ? 'Invalid 2FA code' : '2FA code required',
         };
       }
       return { code: 403, message: 'Invalid email or password' };

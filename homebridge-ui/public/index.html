@@ -30,16 +30,16 @@
       <input type="password" class="form-control" id="passwordInput" required />
     </div>
     <div class="form-group">
-      <label for="tfaCodeInput">Two-factor authentication code</label>
+      <label for="tfaSecretInput">Two-factor authentication code</label>
       <input
         type="number"
         minlength="6"
         maxlength="6"
         class="form-control"
-        id="tfaCodeInput"
-        aria-describedby="tfaCodeHelpBlock"
+        id="tfaSecretInput"
+        aria-describedby="tfaSecretHelpBlock"
       />
-      <small id="tfaCodeHelpBlock" class="form-text text-muted">
+      <small id="tfaSecretHelpBlock" class="form-text text-muted">
         If you have enabled two-factor authentication on your SmartRent account,
         enter the six-digit code here.
       </small>
@@ -146,7 +146,7 @@
     const loginForm = document.getElementById('loginForm');
     const emailInput = document.getElementById('emailInput');
     const passwordInput = document.getElementById('passwordInput');
-    const tfaCodeInput = document.getElementById('tfaCodeInput');
+    const tfaSecretInput = document.getElementById('tfaSecretInput');
     const loginButton = document.getElementById('loginButton');
     const logoutButton = document.getElementById('logoutButton');
     const enableLocksCheckbox = document.getElementById('enableLocksCheckbox');
@@ -171,10 +171,10 @@
       }
     };
 
-    const updateLoginForm = (email = '', password = '', tfaCode = '') => {
+    const updateLoginForm = (email = '', password = '', tfaSecret = '') => {
       emailInput.setAttribute('value', email);
       passwordInput.setAttribute('value', password);
-      tfaCodeInput.setAttribute('value', tfaCode);
+      tfaSecretInput.setAttribute('value', tfaSecret);
       updateLoginFormDisabled();
     };
 
@@ -209,7 +209,7 @@
       updateLoginForm(
         pluginConfig[0].email || '',
         pluginConfig[0].password || '',
-        pluginConfig[0].tfaCode || ''
+        pluginConfig[0].tfaSecret || ''
       );
     }
 
@@ -250,8 +250,8 @@
       updateLoginFormDisabled();
       pluginConfig[0].email = emailInput.value;
       pluginConfig[0].password = passwordInput.value;
-      if (tfaCodeInput.value) {
-        pluginConfig[0].tfaCode = tfaCodeInput.value;
+      if (tfaSecretInput.value) {
+        pluginConfig[0].tfaSecret = tfaSecretInput.value;
       }
       pluginConfig[0].enableLocks = enableLocksCheckbox.checked;
       pluginConfig[0].enableThermostats = enableThermostatsCheckbox.checked;
@@ -270,7 +270,7 @@
         const payload = {
           email: emailInput.value,
           password: passwordInput.value,
-          tfaCode: tfaCodeInput.value,
+          tfaSecret: tfaSecretInput.value,
         };
         const response = await homebridge.request('/login', payload);
         homebridge.hideSpinner();
@@ -297,7 +297,7 @@
         homebridge.showSpinner();
         pluginConfig[0].email = '';
         pluginConfig[0].password = '';
-        pluginConfig[0].tfaCode = '';
+        pluginConfig[0].tfaSecret = '';
         await homebridge.updatePluginConfig(pluginConfig);
         await homebridge.savePluginConfig(pluginConfig);
         const response = await homebridge.request('/logout');

@@ -19,7 +19,7 @@
         "type": "string",
         "required": true
       },
-      "tfaCode": {
+      "tfaSecret": {
         "title": "Two-factor authentication code",
         "type": "string",
         "required": false,
