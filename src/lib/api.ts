@@ -148,7 +148,10 @@ export class SmartRentApi {
     attributes: Array<DeviceAttribute>
   ) {
     const normalizedAttributes = attributes.map(attribute => {
-      if (typeof attribute.state === 'boolean' || typeof attribute.state === 'number') {
+      if (
+        typeof attribute.state === 'boolean' ||
+        typeof attribute.state === 'number'
+      ) {
         return { name: attribute.name, state: attribute.state.toString() };
       }
       return attribute;
