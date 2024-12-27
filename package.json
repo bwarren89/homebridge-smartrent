@@ -16,6 +16,9 @@
     "type": "git",
     "url": "git+https://github.com/jabrown93/homebridge-smartrent.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22",
     "homebridge": ">=1.8.0 || ^2.0.0-beta.0 || >=2.0.0"
