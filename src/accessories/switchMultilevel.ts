@@ -1,8 +1,9 @@
-import { Service, CharacteristicValue } from 'homebridge';
+import { CharacteristicValue, Service } from 'homebridge';
 import { SmartRentPlatform } from '../platform';
 import type { SmartRentAccessory } from '.';
-import { SwitchMultilevel, SwitchMultilevelAttributes } from '../devices';
+import { SwitchMultilevelData } from '../devices';
 import { WSEvent } from '../lib/client';
+import { findStateByName } from '../lib/utils';
 
 /**
  * Switch Muiltilevel Accessory
@@ -108,11 +109,15 @@ export class SwitchMultilevelAccessory {
   async handleOnGet(): Promise<CharacteristicValue> {
     this.platform.log.debug('Triggered GET On');
     const switchMultilevelAttributes =
-      await this.platform.smartRentApi.getState(
+      await this.platform.smartRentApi.getState<SwitchMultilevelData>(
         this.state.hubId,
         this.state.deviceId
       );
-    const level = Number(switchMultilevelAttributes.level) > 0 ? 1 : 0;
+    const levelAttribute = findStateByName(
+      switchMultilevelAttributes,
+      'level'
+    ) as number;
+    const level = Number(levelAttribute) > 0 ? 1 : 0;
     this.state.on.current = level;
     return level;
   }
@@ -123,15 +128,19 @@ export class SwitchMultilevelAccessory {
   async handleOnSet(value: CharacteristicValue) {
     this.platform.log.debug('Triggered SET On:', value);
     this.state.on.target = value === true ? 1 : 0;
+    const newAttributes = [{ name: 'level', state: value === true ? 100 : 0 }];
     const switchMultilevelAttributes =
-      await this.platform.smartRentApi.setState<
-        SwitchMultilevel,
-        SwitchMultilevelAttributes
-      >(this.state.hubId, this.state.deviceId, {
-        level: value === true ? 100 : 0,
-      });
-    const level = Number(switchMultilevelAttributes.level) > 0 ? 1 : 0;
-    this.state.on.current = level;
+      await this.platform.smartRentApi.setState<SwitchMultilevelData>(
+        this.state.hubId,
+        this.state.deviceId,
+        newAttributes
+      );
+    const levelAttribute = findStateByName(
+      switchMultilevelAttributes,
+      'level'
+    ) as number;
+
+    this.state.on.current = Number(levelAttribute) > 0 ? 1 : 0;
   }
 
   /**
@@ -144,7 +153,10 @@ export class SwitchMultilevelAccessory {
         this.state.hubId,
         this.state.deviceId
       );
-    const level = switchMultilevelAttributes.level as number;
+    const level = findStateByName(
+      switchMultilevelAttributes,
+      'level'
+    ) as number;
     this.state.on.current = level;
     return level;
   }
@@ -155,12 +167,16 @@ export class SwitchMultilevelAccessory {
   async handleBrightnessSet(value: CharacteristicValue) {
     this.platform.log.debug('Triggered SET Brightness:', value);
     this.state.on.target = value;
+    const newAttributes = [{ name: 'level', state: Number(value) }];
     const switchMultilevelAttributes =
-      await this.platform.smartRentApi.setState<
-        SwitchMultilevel,
-        SwitchMultilevelAttributes
-      >(this.state.hubId, this.state.deviceId, { level: Number(value) });
-    const level = switchMultilevelAttributes.level as number;
-    this.state.on.current = level;
+      await this.platform.smartRentApi.setState<SwitchMultilevelData>(
+        this.state.hubId,
+        this.state.deviceId,
+        newAttributes
+      );
+    this.state.on.current = findStateByName(
+      switchMultilevelAttributes,
+      'level'
+    ) as number;
   }
 }

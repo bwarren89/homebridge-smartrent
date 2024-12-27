@@ -1,5 +1,5 @@
 export const BASE_URL = 'https://control.smartrent.com';
-export const API_URL = `https://${BASE_URL}/api/v3`;
+export const API_URL = `${BASE_URL}/api/v3`;
 
 export const SESSION_PATH = '/authentication/sessions';
 export const TFA_PATH = '/authentication/sessions/tfa';

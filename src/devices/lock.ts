@@ -1,10 +1,3 @@
-import { DeviceData, Device } from './base';
+import { DeviceData } from './base';
 
-export type LockAttributes = {
-  access_codes_supported: boolean;
-  locked: boolean;
-};
-
-export type LockData = DeviceData<LockAttributes, 'entry_control', true>;
-
-export type Lock = Device<LockData, LockAttributes>;
+export type LockData = DeviceData<'entry_control', true>;

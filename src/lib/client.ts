@@ -8,6 +8,7 @@ import { API_URL, API_CLIENT_HEADERS, WS_API_URL, WS_VERSION } from './request';
 import { SmartRentAuthClient } from './auth';
 import { SmartRentPlatform } from '../platform';
 import WebSocket from 'ws';
+import { Logger } from 'homebridge';
 
 export type WSDeviceList = `devices:${string}`;
 export type WSEvent = {
@@ -33,6 +34,8 @@ export type WSPayload = [null, null, WSDeviceList, string, WSEvent];
 export class SmartRentApiClient {
   private authClient: SmartRentAuthClient;
   private readonly apiClient: AxiosInstance;
+  protected readonly log: Logger | Console;
+
   // wsClient: Promise<WebSocket>;
 
   constructor(readonly platform: SmartRentPlatform) {
@@ -40,6 +43,7 @@ export class SmartRentApiClient {
       platform.api.user.storagePath(),
       platform.log
     );
+    this.log = console;
     this.apiClient = this._initializeApiClient();
   }
 
@@ -92,8 +96,7 @@ export class SmartRentApiClient {
       ...config.headers,
       Authorization: `Bearer ${accessToken}`,
     } as AxiosRequestHeaders;
-    this.platform.log.debug('Request:', JSON.stringify(config, null, 2));
-    this.platform.log.debug('Request:');
+    this.log.debug('Request:', JSON.stringify(config, null, 2));
     return config;
   }
 
@@ -103,10 +106,7 @@ export class SmartRentApiClient {
    * @returns SmartRent response data payload
    */
   private _handleResponse(response: AxiosResponse) {
-    this.platform.log.debug(
-      'Response:',
-      JSON.stringify(response.data, null, 2)
-    );
+    this.log.debug('Response:', JSON.stringify(response.data, null, 2));
     return response;
   }
 
@@ -181,7 +181,7 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
    * @returns WebSocket client
    */
   private async _initializeWsClient() {
-    this.platform.log.debug('WebSocket connection opening');
+    this.log.debug('WebSocket connection opening');
     const token = String(await this.getWebSocketToken());
     const wsClient = new WebSocket(
       WS_API_URL +
@@ -196,29 +196,29 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
   }
 
   private _handleWsOpen() {
-    this.platform.log.debug('WebSocket connection opened');
+    this.log.debug('WebSocket connection opened');
     this.devices.forEach(device => this.subscribeDevice(device));
   }
 
   private _handleWsMessage(message: WebSocket.MessageEvent) {
-    this.platform.log.debug(
-      `WebSocket message received: Data: ${message.data}`
-    );
+    this.log.debug(`WebSocket message received: Data: ${message.data}`);
     const data: WSPayload = JSON.parse(String(message.data));
     if (data[3].includes('attribute_state')) {
       const device = data[2].split(':')[1];
-      this.platform.log.debug(String(data[4]));
+      this.log.debug(String(data[4]));
       this.event[device](data[4]);
     }
   }
 
   private _handleWsError(error: WebSocket.ErrorEvent) {
-    this.platform.log.error(`WebSocket error: ${error}`);
+    this.log.error(`WebSocket error: ${JSON.stringify(error)}`);
   }
 
   private _handleWsClose(event: WebSocket.CloseEvent) {
-    this.platform.log.debug(
-      `WebSocket connection closed: Code: ${event.code}, Reason: ${event.reason}, Event: ${event}`
+    this.log.debug(
+      `WebSocket connection closed: Code: ${event.code}, Reason: ${
+        event.reason
+      }, Event: ${JSON.stringify(event)}`
     );
     this.wsClient = this._initializeWsClient();
   }
@@ -228,14 +228,15 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
    * @param deviceId Device ID
    */
   public async subscribeDevice(deviceId: number) {
-    this.platform.log.debug(`Subscribing to device: ${deviceId}`);
+    this.log.debug(`Subscribing to device: ${deviceId}`);
     if (!this.devices.includes(deviceId)) {
       this.devices.push(deviceId);
       this._emitize(this.event, `${deviceId}`);
     }
     try {
-      if ((await this.wsClient).readyState !== WebSocket.OPEN)
+      if ((await this.wsClient).readyState !== WebSocket.OPEN) {
         throw 'WebSocket not ready';
+      }
       (await this.wsClient).send(
         JSON.stringify(<WSPayload>[
           null,
@@ -245,10 +246,10 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
           {},
         ])
       );
-      this.platform.log.debug(`Subscribed to device: ${deviceId}`);
+      this.log.debug(`Subscribed to device: ${deviceId}`);
     } catch (err) {
-      this.platform.log.error(String(err));
-      this.platform.log.error(`Dang didnt subscribe ${deviceId}, trying again`);
+      this.log.error(String(err));
+      this.log.error(`Dang didnt subscribe ${deviceId}, trying again`);
       setTimeout(() => this.subscribeDevice(deviceId), 1000);
     }
   }

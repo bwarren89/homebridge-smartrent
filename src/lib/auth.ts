@@ -1,7 +1,11 @@
 import { Logger } from 'homebridge';
-import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
+import axios, {
+  AxiosError,
+  AxiosInstance,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { existsSync, promises as fsPromises } from 'fs';
-import { URLSearchParams } from 'url';
 import { resolve as pathResolve } from 'path';
 import { SmartRentPlatformConfig } from './config';
 import {
@@ -11,8 +15,8 @@ import {
   WEBSOCKET_TOKEN_PATH,
   AUTH_CLIENT_HEADERS,
 } from './request';
-import { totp } from 'speakeasy';
 import { jwtDecode } from 'jwt-decode';
+import { authenticator } from 'otplib';
 
 const USER_PREFIX = 'User:';
 /** Credentials stored in config.json */
@@ -23,7 +27,7 @@ type ConfigCredentials = Pick<
 
 /** Login credentials used in SmartRent session request */
 type LoginCredentials = {
-  username: string;
+  email: string;
   password: string;
 };
 
@@ -54,9 +58,10 @@ type SessionApiResponse = {
 
 /** Session stored in session.json */
 export type Session = {
-  userId: number;
-  accessToken: string;
-  expires: Date;
+  userId?: number;
+  accessToken?: string;
+  expires?: Date;
+  websocketExpires?: Date;
   webSocketToken?: string;
 };
 
@@ -105,6 +110,7 @@ export class SmartRentAuthClient {
       headers: AUTH_CLIENT_HEADERS,
     });
     authClient.interceptors.response.use(this._handleResponse.bind(this));
+    authClient.interceptors.request.use(this._handleRequest.bind(this));
     return authClient;
   }
 
@@ -116,6 +122,12 @@ export class SmartRentAuthClient {
   private _handleResponse(response: AxiosResponse) {
     this.log.debug('Response:', JSON.stringify(response.data, null, 2));
     return response;
+  }
+
+  private _handleRequest(config: InternalAxiosRequestConfig) {
+    this.log.debug('Request:', JSON.stringify(config, null, 2));
+    this.log.debug('Request:');
+    return config;
   }
 
   /**
@@ -135,7 +147,7 @@ export class SmartRentAuthClient {
         },
       }
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -163,17 +175,27 @@ export class SmartRentAuthClient {
     const uidString = (jwtData.sub as string).replace(USER_PREFIX, '');
     const uid = parseInt(uidString, 10);
     this.session = {
+      ...this.session,
       userId: uid,
       accessToken: data.access_token,
       expires: SmartRentAuthClient._getExpireDate(exp),
     };
 
-    const webSocketToken = await this._getWebsocketToken(this.session);
+    this.log.info(`${refreshed ? 'Refreshed' : 'Started'} SmartRent session`);
+    const sessionStr = JSON.stringify(this.session, null, 2);
+    await fsPromises.writeFile(this.sessionPath, sessionStr);
+    this.log.debug('Saved session to', this.sessionPath);
+    return this.session;
+  }
+
+  private async _storeWebSocketToken(data: string) {
+    const jwtData = jwtDecode(data);
+    const exp = jwtData.exp as number;
     this.session = {
       ...this.session,
-      webSocketToken,
+      webSocketToken: data,
+      websocketExpires: SmartRentAuthClient._getExpireDate(exp),
     };
-    this.log.info(`${refreshed ? 'Refreshed' : 'Started'} SmartRent session`);
     const sessionStr = JSON.stringify(this.session, null, 2);
     await fsPromises.writeFile(this.sessionPath, sessionStr);
     this.log.debug('Saved session to', this.sessionPath);
@@ -202,7 +224,7 @@ export class SmartRentAuthClient {
 
     // Attempt to start a session using the given email and password
     const sessionData = await this._startBasicSession({
-      username: email,
+      email: email,
       password,
     });
 
@@ -212,6 +234,7 @@ export class SmartRentAuthClient {
       return this._storeSession(sessionData);
     }
 
+    this.log.debug('Session data:', sessionData);
     // If 2FA is enabled, start a 2FA session
     if (SmartRentAuthClient._isTfaSession(sessionData)) {
       this.log.debug('2FA enabled');
@@ -223,7 +246,7 @@ export class SmartRentAuthClient {
         return;
       }
 
-      const token = totp({ secret: tfaSecret, encoding: 'base32' });
+      const token = authenticator.generate(tfaSecret);
 
       return this._startTfaSession({
         tfa_api_token: sessionData.tfa_api_token,
@@ -325,7 +348,7 @@ export class SmartRentAuthClient {
   }
 
   private async _getWebsocketToken(session: Session) {
-    const response = await this.client.post<{ data: { token: string } }>(
+    const response = await this.client.post<{ token: string }>(
       WEBSOCKET_TOKEN_PATH,
       undefined,
       {
@@ -335,7 +358,8 @@ export class SmartRentAuthClient {
         },
       }
     );
-    return response.data.data.token;
+    await this._storeWebSocketToken(response.data.token);
+    return response.data.token;
   }
 
   /**
@@ -348,6 +372,7 @@ export class SmartRentAuthClient {
     // Return the stored session if it's valid
     if (
       !!this.session &&
+      !!this.session.expires &&
       new Date(this.session.expires) > new Date(Date.now() - 1000 * 60)
     ) {
       return this.session;
@@ -375,7 +400,17 @@ export class SmartRentAuthClient {
    */
   public async getWebSocketToken(credentials: ConfigCredentials) {
     const session = await this._getSession(credentials);
-
+    if (!session) {
+      this.log.error('Failed to get WebSocket Token from SmartRent');
+      return;
+    }
+    if (
+      session?.websocketExpires &&
+      new Date(session.websocketExpires) > new Date(Date.now())
+    ) {
+      return session.webSocketToken;
+    }
+    await this._getWebsocketToken(session);
     if (session && 'webSocketToken' in session) {
       return session.webSocketToken;
     }

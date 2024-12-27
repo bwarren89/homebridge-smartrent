@@ -2,7 +2,7 @@
   "watch": ["lib", "src", "homebridge-ui/server.js"],
   "ext": "ts",
   "ignore": [],
-  "exec": "tsc && homebridge -I -D",
+  "exec": "tsc",
   "signal": "SIGTERM",
   "env": {
     "NODE_OPTIONS": "--trace-warnings"

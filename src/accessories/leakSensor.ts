@@ -1,7 +1,8 @@
-import { Service, CharacteristicValue } from 'homebridge';
+import { CharacteristicValue, Service } from 'homebridge';
 import { SmartRentPlatform } from '../platform';
 import type { SmartRentAccessory } from '.';
 import { WSEvent } from '../lib/client';
+import { findStateByName } from '../lib/utils';
 
 /**
  * Leak Sensor Accessory
@@ -63,10 +64,9 @@ export class LeakSensorAccessory {
   }
 
   private _getLeakDetectedCharacteristicValue(leak: boolean) {
-    const currentValue = leak
+    return leak
       ? this.platform.Characteristic.LeakDetected.LEAK_DETECTED
       : this.platform.Characteristic.LeakDetected.LEAK_NOT_DETECTED;
-    return currentValue;
   }
 
   /**
@@ -78,7 +78,7 @@ export class LeakSensorAccessory {
       this.state.hubId,
       this.state.deviceId
     );
-    const leak = leakAttributes.leak as boolean;
+    const leak = findStateByName(leakAttributes, 'leak') as boolean;
     const currentValue = this._getLeakDetectedCharacteristicValue(leak);
     this.state.leak.current = currentValue;
     return currentValue;
@@ -90,9 +90,11 @@ export class LeakSensorAccessory {
    */
   handleDeviceStateChanged(event: WSEvent) {
     this.platform.log.debug('Received websocket leak event:', event);
+
+    let leak: number;
     switch (event.name) {
       case 'leak':
-        const leak = this._getLeakDetectedCharacteristicValue(
+        leak = this._getLeakDetectedCharacteristicValue(
           event.last_read_state === 'true'
         );
         this.state.leak.current = leak;

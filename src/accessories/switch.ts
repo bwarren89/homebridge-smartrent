@@ -1,8 +1,9 @@
-import { Service, CharacteristicValue } from 'homebridge';
+import { CharacteristicValue, Service } from 'homebridge';
 import { SmartRentPlatform } from '../platform';
 import type { SmartRentAccessory } from '.';
-import { Switch, SwitchAttributes } from './../devices';
+import { SwitchData } from '../devices';
 import { WSEvent } from '../lib/client';
+import { findStateByName } from '../lib/utils';
 
 /**
  * Switch Accessory
@@ -67,8 +68,7 @@ export class SwitchAccessory {
   }
 
   private static _getOnCharacteristicValue(on: boolean) {
-    const currentValue = on ? 1 : 0;
-    return currentValue;
+    return on ? 1 : 0;
   }
 
   /**
@@ -96,11 +96,12 @@ export class SwitchAccessory {
    */
   async handleOnGet(): Promise<CharacteristicValue> {
     this.platform.log.debug('Triggered GET On');
-    const switchAttributes = await this.platform.smartRentApi.getState(
-      this.state.hubId,
-      this.state.deviceId
-    );
-    const on = switchAttributes.on as boolean;
+    const switchAttributes =
+      await this.platform.smartRentApi.getState<SwitchData>(
+        this.state.hubId,
+        this.state.deviceId
+      );
+    const on = findStateByName(switchAttributes, 'on') as boolean;
     const currentValue = SwitchAccessory._getOnCharacteristicValue(on);
     this.state.on.current = currentValue;
     return currentValue;
@@ -112,11 +113,14 @@ export class SwitchAccessory {
   async handleOnSet(value: CharacteristicValue) {
     this.platform.log.debug('Triggered SET On:', value);
     this.state.on.target = value;
-    const switchAttributes = await this.platform.smartRentApi.setState<
-      Switch,
-      SwitchAttributes
-    >(this.state.hubId, this.state.deviceId, { on: !!value });
-    const on = switchAttributes.on as boolean;
+    const newAttributes = [{ name: 'on', state: !!value }];
+    const switchAttributes =
+      await this.platform.smartRentApi.setState<SwitchData>(
+        this.state.hubId,
+        this.state.deviceId,
+        newAttributes
+      );
+    const on = findStateByName(switchAttributes, 'on') as boolean;
     this.state.on.current = SwitchAccessory._getOnCharacteristicValue(on);
   }
 }

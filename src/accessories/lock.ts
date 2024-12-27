@@ -1,8 +1,9 @@
-import { Service, CharacteristicValue } from 'homebridge';
+import { CharacteristicValue, Service } from 'homebridge';
 import { SmartRentPlatform } from '../platform';
 import type { SmartRentAccessory } from '.';
-import { Lock, LockAttributes } from './../devices';
+import { LockData } from '../devices';
 import { WSEvent } from '../lib/client';
+import { findStateByName } from '../lib/utils';
 
 /**
  * Lock Accessory
@@ -79,10 +80,9 @@ export class LockAccessory {
   }
 
   private _getLockStateCharacteristicValue(locked: boolean) {
-    const currentValue = locked
+    return locked
       ? this.platform.Characteristic.LockTargetState.SECURED
       : this.platform.Characteristic.LockTargetState.UNSECURED;
-    return currentValue;
   }
 
   /**
@@ -90,13 +90,12 @@ export class LockAccessory {
    */
   async handleBatteryLevelGet(): Promise<CharacteristicValue> {
     this.platform.log.debug('Triggered GET BatteryLevel');
-    const lockData = await this.platform.smartRentApi.getData(
+    const lockData = (await this.platform.smartRentApi.getData<LockData>(
       this.state.hubId,
       this.state.deviceId
-    );
+    )) as LockData;
     this.platform.log.debug('Lock Data', lockData);
-    const batteryLevel = Math.round(Number(lockData.battery_level)) as number;
-    return batteryLevel;
+    return Math.round(Number(lockData.battery_level)) as number;
   }
 
   /**
@@ -107,11 +106,11 @@ export class LockAccessory {
       'Triggered GET LockCurrentState Start',
       this.state.locked.current
     );
-    const lockAttributes = await this.platform.smartRentApi.getState(
+    const lockAttributes = await this.platform.smartRentApi.getState<LockData>(
       this.state.hubId,
       this.state.deviceId
     );
-    const locked = lockAttributes.locked as boolean;
+    const locked = findStateByName(lockAttributes, 'locked') as boolean;
     const currentValue = this._getLockStateCharacteristicValue(locked);
     this.state.locked.current = currentValue;
     this.platform.log.debug(
@@ -129,13 +128,12 @@ export class LockAccessory {
       'Triggered GET LockTargetState',
       this.state.locked.target
     );
-    const lockAttributes = await this.platform.smartRentApi.getState(
+    const lockAttributes = await this.platform.smartRentApi.getState<LockData>(
       this.state.hubId,
       this.state.deviceId
     );
-    const locked = lockAttributes.locked as boolean;
-    const currentValue = this._getLockStateCharacteristicValue(locked);
-    return currentValue;
+    const locked = findStateByName(lockAttributes, 'locked') as boolean;
+    return this._getLockStateCharacteristicValue(locked);
   }
 
   /**
@@ -144,11 +142,13 @@ export class LockAccessory {
   async handleLockTargetStateSet(value: CharacteristicValue) {
     this.platform.log.debug('Triggered SET LockTargetState:', value);
     this.state.locked.target = value;
-    const lockAttributes = await this.platform.smartRentApi.setState<
-      Lock,
-      LockAttributes
-    >(this.state.hubId, this.state.deviceId, { locked: !!value });
-    this.platform.log.debug('Triggered SET LockTargetState:', value);
+    const attriubtes = [{ name: 'locked', state: !!value }];
+    const lockAttributes = await this.platform.smartRentApi.setState<LockData>(
+      this.state.hubId,
+      this.state.deviceId,
+      attriubtes
+    );
+    this.platform.log.debug('Completed SET LockTargetState:', lockAttributes);
   }
 
   /**
@@ -186,12 +186,13 @@ export class LockAccessory {
       this.state.locked.current
     );
     try {
-      const lockAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      // this.platform.log.debug('lockAttributes', lockAttributes);
-      const locked = lockAttributes.locked as boolean;
+      const lockAttributes =
+        await this.platform.smartRentApi.getState<LockData>(
+          this.state.hubId,
+          this.state.deviceId
+        );
+      this.platform.log.debug('lockAttributes', lockAttributes);
+      const locked = findStateByName(lockAttributes, 'locked') as boolean;
       const currentValue = this._getLockStateCharacteristicValue(locked);
       this.state.locked.current = currentValue;
       this.state.locked.target = currentValue;

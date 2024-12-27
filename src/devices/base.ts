@@ -2,17 +2,16 @@ type BatteryData<BatteryPowered extends boolean> = BatteryPowered extends true
   ? { battery_level: number; battery_powered: true }
   : { battery_level: null; battery_powered: false };
 
-export type BaseDeviceAttributes = Record<
-  string,
-  string | number | boolean | null
->;
+export type DeviceAttribute = {
+  name: string;
+  state: number | boolean | string | null;
+};
 
 export type DeviceData<
-  A extends BaseDeviceAttributes, // Attributes
   T extends string, // Device type
   B extends boolean // Battery powered
 > = BatteryData<B> & {
-  attributes: A;
+  attributes: Array<DeviceAttribute>;
   icon: string | null;
   id: number;
   inserted_at: string;
@@ -35,17 +34,6 @@ export type DeviceData<
   warning: boolean;
 };
 
-export interface Device<
-  D extends DeviceData<A, string, boolean>,
-  A extends BaseDeviceAttributes
-> {
-  data: D;
-}
-
 export type BaseDeviceResponse = {
-  data: { attributes: BaseDeviceAttributes };
-};
-
-export type BaseDeviceDataResponse = {
-  data: DeviceData<BaseDeviceAttributes, string, boolean>;
+  attributes: Array<DeviceAttribute>;
 };
