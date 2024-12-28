@@ -372,7 +372,7 @@ export class SmartRentAuthClient {
     if (
       !!this.session &&
       !!this.session.expires &&
-      new Date(this.session.expires) > new Date()
+      new Date(this.session.expires) > new Date(Date.now())
     ) {
       return this.session;
     }
@@ -405,7 +405,7 @@ export class SmartRentAuthClient {
     }
     if (
       session?.websocketExpires &&
-      new Date(session.websocketExpires) > new Date()
+      new Date(session.websocketExpires) > new Date(Date.now())
     ) {
       return session.webSocketToken;
     }
