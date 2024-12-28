@@ -194,7 +194,7 @@ export class SmartRentAuthClient {
     this.session = {
       ...this.session,
       webSocketToken: data,
-      websocketExpires: SmartRentAuthClient._getExpireDate(exp, 10),
+      websocketExpires: SmartRentAuthClient._getExpireDate(exp, 0),
     };
     const sessionStr = JSON.stringify(this.session, null, 2);
     await fsPromises.writeFile(this.sessionPath, sessionStr);
@@ -373,7 +373,7 @@ export class SmartRentAuthClient {
     if (
       !!this.session &&
       !!this.session.expires &&
-      new Date(this.session.expires) > new Date(Date.now() - 1000 * 60)
+      new Date(this.session.expires) > new Date()
     ) {
       return this.session;
     }
@@ -406,7 +406,7 @@ export class SmartRentAuthClient {
     }
     if (
       session?.websocketExpires &&
-      new Date(session.websocketExpires) > new Date(Date.now())
+      new Date(session.websocketExpires) > new Date()
     ) {
       return session.webSocketToken;
     }
