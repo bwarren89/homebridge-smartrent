@@ -10,7 +10,7 @@
     "homekit",
     "smartrent"
   ],
-  "license": "LGPL-3.0-or-later",
+  "license": "GPL-3.0-or-later",
   "author": "Jared Brown",
   "repository": {
     "type": "git",

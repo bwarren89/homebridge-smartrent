@@ -43,9 +43,9 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
     public readonly config: SmartRentPlatformConfig,
     public readonly api: API
   ) {
-    log.debug(`Initializing ${this.config.name} platform`);
+    log.debug(`Initializing ${this.config.platform} platform`);
     this.smartRentApi = new SmartRentApi(this);
-    log.debug('Finished initializing platform:', this.config.name);
+    log.debug('Finished initializing platform:', this.config.platform);
 
     this.api.on('didFinishLaunching', async () => {
       if (await this.smartRentApi.client.getAccessToken()) {
