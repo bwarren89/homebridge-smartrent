@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.15](https://github.com/jabrown93/homebridge-smartrent/compare/v2.0.14...v2.0.15) (2025-01-07)
+
+### Bug Fixes
+
+* mismatched license info ([bc4ebd7](https://github.com/jabrown93/homebridge-smartrent/commit/bc4ebd725a35c16415a2607652d772bfadae955b))
+
 ## [2.0.14](https://github.com/jabrown93/homebridge-smartrent/compare/v2.0.13...v2.0.14) (2025-01-07)
 
 ### Bug Fixes
