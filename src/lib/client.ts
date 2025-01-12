@@ -152,12 +152,14 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
   }
 
   private _emitize(obj: object, eventName: string) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
     let _subscriptions = new Set<Function>();
     Object.defineProperty(obj, eventName, {
       set(func) {
         _subscriptions.add(func);
       },
       get() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const emit = (...args: any[]) => {
           _subscriptions.forEach(f => f(...args));
         };
@@ -211,14 +213,15 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
   }
 
   private _handleWsError(error: WebSocket.ErrorEvent) {
-    this.log.error(`WebSocket error: ${JSON.stringify(error)}`);
+    this.log.error(`WebSocket error: ${error.message}`, error);
   }
 
   private _handleWsClose(event: WebSocket.CloseEvent) {
     this.log.debug(
       `WebSocket connection closed: Code: ${event.code}, Reason: ${
         event.reason
-      }, Event: ${JSON.stringify(event)}`
+      }, Event: ${event}`,
+      event
     );
     this.wsClient = this._initializeWsClient();
   }
