@@ -26,7 +26,6 @@
   "main": "dist/index.js",
   "files": [
     "src",
-    "homebridge-ui",
     "dist",
     "config.example.json",
     "config.schema.json",
