@@ -1,11 +1,5 @@
-import {
-  API,
-  DynamicPlatformPlugin,
-  Logger,
-  Service,
-  Characteristic,
-} from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
+import { API, DynamicPlatformPlugin, Logger } from 'homebridge';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 import {
   AccessoryContext,
   SmartRentAccessory,
@@ -14,19 +8,15 @@ import {
   SwitchAccessory,
   ThermostatAccessory,
   SwitchMultilevelAccessory,
-} from './accessories';
-import { SmartRentApi } from './lib/api';
-import { DeviceDataUnion } from './devices';
-import { SmartRentPlatformConfig } from './lib/config';
+} from './accessories/index.js';
+import { SmartRentApi } from './lib/api.js';
+import { DeviceDataUnion } from './devices/index.js';
+import { SmartRentPlatformConfig } from './lib/config.js';
 
 /**
  * SmartRentPlatform
  */
 export class SmartRentPlatform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic =
-    this.api.hap.Characteristic;
-
   public readonly smartRentApi: SmartRentApi;
   public readonly accessories: SmartRentAccessory[] = [];
 

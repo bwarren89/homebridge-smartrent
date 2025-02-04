@@ -4,9 +4,14 @@ import axios, {
   AxiosInstance,
   AxiosRequestHeaders,
 } from 'axios';
-import { API_URL, API_CLIENT_HEADERS, WS_API_URL, WS_VERSION } from './request';
-import { SmartRentAuthClient } from './auth';
-import { SmartRentPlatform } from '../platform';
+import {
+  API_URL,
+  API_CLIENT_HEADERS,
+  WS_API_URL,
+  WS_VERSION,
+} from './request.js';
+import { SmartRentAuthClient } from './auth.js';
+import { SmartRentPlatform } from '../platform.js';
 import WebSocket from 'ws';
 import { Logger } from 'homebridge';
 
@@ -35,8 +40,6 @@ export class SmartRentApiClient {
   private readonly authClient: SmartRentAuthClient;
   private readonly apiClient: AxiosInstance;
   protected readonly log: Logger | Console;
-
-  // wsClient: Promise<WebSocket>;
 
   constructor(readonly platform: SmartRentPlatform) {
     this.authClient = new SmartRentAuthClient(
@@ -184,7 +187,7 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
    */
   private async _initializeWsClient() {
     this.log.debug('WebSocket connection opening');
-    const token = String(await this.getWebSocketToken());
+    const token = String(await this.getAccessToken());
     const wsClient = new WebSocket(
       WS_API_URL +
         '?' +
@@ -214,6 +217,9 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
 
   private _handleWsError(error: WebSocket.ErrorEvent) {
     this.log.error(`WebSocket error: ${error.message}`);
+    this.wsClient
+      .then(client => client.close())
+      .then(() => this._initializeWsClient);
   }
 
   private _handleWsClose(event: WebSocket.CloseEvent) {

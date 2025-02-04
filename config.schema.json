@@ -1,8 +1,7 @@
 {
   "pluginAlias": "SmartRent",
   "pluginType": "platform",
-  "singular": true,
-  "customUi": true,
+  "strictValidation": true,
   "headerDisplay": "Homebridge plugin for SmartRent installations",
   "footerDisplay": "For documentation please see [GitHub](https://github.com/jabrown93/homebridge-smartrent)",
   "schema": {
@@ -24,8 +23,8 @@
         "type": "string",
         "required": false,
         "pattern": "^[A-Z0-9]{32}$",
-        "minLength": 6,
-        "maxLength": 6,
+        "minLength": 32,
+        "maxLength": 32,
         "description": "If you have enabled two-factor authentication on your SmartRent account, enter the seed secret here."
       },
       "enableLeakSensors": {
@@ -68,6 +67,20 @@
         "type": "string",
         "required": false,
         "description": "Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app."
+      },
+      "enableAutoLock": {
+        "title": "Enable auto locking after a delay from the last unlock",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Uncheck to disable auto lock."
+      },
+      "autoLockDelayInMinutes": {
+        "title": "Auto lock delay in minutes",
+        "type": "integer",
+        "required": false,
+        "default": 5,
+        "description": "The delay in minutes after the last unlock to automatically lock the door."
       }
     }
   }

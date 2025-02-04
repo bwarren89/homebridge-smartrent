@@ -1,10 +1,10 @@
-import { SmartRentPlatform } from '../platform';
-import { SmartRentApiClient, SmartRentWebsocketClient } from './client';
+import { SmartRentPlatform } from '../platform.js';
+import { SmartRentApiClient, SmartRentWebsocketClient } from './client.js';
 import {
   BaseDeviceResponse,
   DeviceAttribute,
   DeviceDataUnion,
-} from '../devices';
+} from '../devices/index.js';
 
 type UnitData = {
   building: string;

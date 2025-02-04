@@ -7,7 +7,6 @@ All notable changes to this project will be documented in this file. See
 
 ### Bug Fixes
 
-* set type as module in package.json ([2a1c0b9](https://github.com/jabrown93/homebridge-smartrent/commit/2a1c0b92ee99137ca7f5c880c40cb610ac7777bf))
 * use standard config screen ([68d0365](https://github.com/jabrown93/homebridge-smartrent/commit/68d03658d7b80c94273ca35b6a73209a2fe29fda))
 
 ## [2.0.17](https://github.com/jabrown93/homebridge-smartrent/compare/v2.0.16...v2.0.17) (2025-01-12)
