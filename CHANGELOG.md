@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.2](https://github.com/jabrown93/homebridge-smartrent/compare/v2.1.1...v2.1.2) (2025-02-08)
+
+### Bug Fixes
+
+* revert websocket changes ([1173659](https://github.com/jabrown93/homebridge-smartrent/commit/1173659c89253cae9a4f5f9232441908f7bfff63))
+
 ## [2.1.1](https://github.com/jabrown93/homebridge-smartrent/compare/v2.1.0...v2.1.1) (2025-02-08)
 
 ### Bug Fixes
