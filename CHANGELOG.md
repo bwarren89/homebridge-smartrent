@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.1](https://github.com/jabrown93/homebridge-smartrent/compare/v2.1.0...v2.1.1) (2025-02-08)
+
+### Bug Fixes
+
+* improve logging around auto lock and clean up code ([7b0bd2e](https://github.com/jabrown93/homebridge-smartrent/commit/7b0bd2e48d5e5f0ef3ab17b0c4621f4a8495b76f))
+
 ## [2.1.0](https://github.com/jabrown93/homebridge-smartrent/compare/v2.0.18...v2.1.0) (2025-02-04)
 
 ### Features
