@@ -108,11 +108,12 @@ export class LockAccessory {
       this.state.hubId,
       this.state.deviceId
     );
-    const locked = findStateByName(lockAttributes, this.LOCKED) as boolean;
+    const locked = findStateByName(lockAttributes, this.LOCKED) as string;
     this.platform.log.debug('Lock Attributes', JSON.stringify(lockAttributes));
-    const currentValue = locked
-      ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-      : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
+    const currentValue =
+      locked === 'true'
+        ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
+        : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
     this.state.locked.current = currentValue;
     this.platform.log.debug(
       'Triggered GET LockCurrentState Done',
@@ -227,10 +228,11 @@ export class LockAccessory {
           this.state.deviceId
         );
       this.platform.log.debug('lockAttributes', lockAttributes);
-      const locked = findStateByName(lockAttributes, this.LOCKED) as boolean;
-      const currentValue = locked
-        ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-        : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
+      const locked = findStateByName(lockAttributes, this.LOCKED);
+      const currentValue =
+        locked === 'true'
+          ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
+          : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
       this.state.locked.current = currentValue;
       this.state.locked.target = currentValue;
       this.service
