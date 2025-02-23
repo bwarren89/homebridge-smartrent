@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.4](https://github.com/jabrown93/homebridge-smartrent/compare/v2.1.3...v2.1.4) (2025-02-23)
+
+### Bug Fixes
+
+* properly parse lock state ([4b63c94](https://github.com/jabrown93/homebridge-smartrent/commit/4b63c94dff4093426bd0e98ef453e5577d40b0d9))
+
 ## [2.1.3](https://github.com/jabrown93/homebridge-smartrent/compare/v2.1.2...v2.1.3) (2025-02-12)
 
 ### Bug Fixes
