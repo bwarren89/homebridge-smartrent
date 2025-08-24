@@ -11,6 +11,7 @@
   "prHourlyLimit": 10,
   "configMigration": true,
   "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "forkProcessing": "enabled",
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": true,
