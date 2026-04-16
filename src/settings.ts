@@ -6,4 +6,4 @@ export const PLATFORM_NAME = 'SmartRent';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = '@jabrown93/homebridge-smartrent';
+export const PLUGIN_NAME = '@prismwizard/homebridge-smartrent';

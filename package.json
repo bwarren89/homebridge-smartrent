@@ -1,8 +1,8 @@
 {
   "displayName": "SmartRent",
-  "name": "@jabrown93/homebridge-smartrent",
-  "version": "2.2.2",
-  "description": "Homebridge plugin for SmartRent installations",
+  "name": "@prismwizard/homebridge-smartrent",
+  "version": "3.0.0",
+  "description": "Homebridge plugin for SmartRent installations (fork with broadened Node.js support)",
   "keywords": [
     "homebridge",
     "homebridge-plugin",
@@ -11,17 +11,17 @@
     "smartrent"
   ],
   "license": "GPL-3.0-or-later",
-  "author": "Jared Brown",
+  "author": "Brandon Warren",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jabrown93/homebridge-smartrent.git"
+    "url": "git+https://github.com/BWarren89/homebridge-smartrent.git"
   },
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "engines": {
-    "node": "^24.0.0",
+    "node": ">=20.0.0",
     "homebridge": "^1.8.0 || ^2.0.0-beta.0"
   },
   "main": "dist/index.js",
@@ -43,8 +43,6 @@
     "build": "npm-run-all clean compile",
     "watch": "npm run dev-setup && npm run build && npm link && nodemon",
     "prepublishOnly": "npm-run-all prettier lint build",
-    "semantic-release": "cross-env semantic-release --no-ci",
-    "release": "npm-run-all build semantic-release",
     "test": "echo \"Error: no test specified\" && exit 0",
     "prepare": "husky",
     "tsc": "tsc --noEmit",
@@ -61,36 +59,29 @@
     "ws": "^8.8.1"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.3",
-    "@commitlint/config-conventional": "20.4.3",
-    "@semantic-release/changelog": "6.0.3",
-    "@semantic-release/commit-analyzer": "13.0.1",
-    "@semantic-release/git": "10.0.1",
-    "@semantic-release/github": "12.0.6",
-    "@semantic-release/npm": "13.1.5",
-    "@semantic-release/release-notes-generator": "14.1.0",
-    "@types/node": "24.12.0",
+    "@commitlint/cli": "20.5.0",
+    "@commitlint/config-conventional": "20.5.0",
+    "@types/node": "24.12.2",
     "@types/ws": "8.18.1",
-    "@typescript-eslint/eslint-plugin": "8.57.0",
-    "@typescript-eslint/parser": "8.57.0",
-    "conventional-changelog-conventionalcommits": "9.3.0",
+    "@typescript-eslint/eslint-plugin": "8.58.1",
+    "@typescript-eslint/parser": "8.58.1",
+    "conventional-changelog-conventionalcommits": "9.3.1",
     "cross-env": "10.1.0",
     "eslint": "9.39.4",
-    "homebridge": "1.11.2",
-    "homebridge-config-ui-x": "5.19.0",
+    "homebridge": "1.11.4",
+    "homebridge-config-ui-x": "5.21.0",
     "husky": "9.1.7",
-    "lint-staged": "16.3.3",
+    "lint-staged": "16.4.0",
     "nodemon": "3.1.14",
     "npm-run-all2": "8.0.4",
-    "prettier": "3.8.1",
+    "prettier": "3.8.2",
     "rimraf": "6.1.3",
-    "semantic-release": "25.0.3",
     "ts-node": "10.9.2",
     "typescript": "5.9.3"
   },
   "types": "./dist/index.d.ts",
   "bugs": {
-    "url": "https://github.com/jabrown93/homebridge-smartrent/issues"
+    "url": "https://github.com/BWarren89/homebridge-smartrent/issues"
   },
-  "homepage": "https://github.com/jabrown93/homebridge-smartrent#readme"
+  "homepage": "https://github.com/BWarren89/homebridge-smartrent#readme"
 }
