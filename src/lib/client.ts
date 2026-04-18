@@ -17,25 +17,71 @@ import { Logger } from 'homebridge';
 import { EventEmitter } from 'events';
 
 export type WSDeviceList = `devices:${string}`;
+
+/**
+ * Known WebSocket event names. Using a plain string union plus a fallback
+ * `string` keeps us forward-compatible with new SmartRent attributes.
+ */
+export type WSEventName =
+  | 'leak'
+  | 'contact'
+  | 'motion'
+  | 'tamper'
+  | 'fan_mode'
+  | 'current_temp'
+  | 'current_humidity'
+  | 'heating_setpoint'
+  | 'cooling_setpoint'
+  | 'mode'
+  | 'locked'
+  | 'on'
+  | 'level'
+  | 'battery_level'
+  | 'low_battery'
+  | 'notifications'
+  | (string & {});
+
 export type WSEvent = {
   id: number;
-  name:
-    | 'leak'
-    | 'fan_mode'
-    | 'current_temp'
-    | 'current_humidity'
-    | 'heating_setpoint'
-    | 'cooling_setpoint'
-    | 'mode'
-    | 'locked'
-    | 'on'
-    | 'notifications';
+  name: WSEventName;
   remote_id: string;
   type: string;
   last_read_state: string;
   last_read_state_changed_at: string;
 };
-export type WSPayload = [null, null, WSDeviceList, string, WSEvent];
+export type WSPayload = [
+  string | null,
+  string | null,
+  WSDeviceList,
+  string,
+  WSEvent | Record<string, unknown>,
+];
+
+/**
+ * Fields whose values must be redacted in debug logs.
+ */
+const REDACTED_HEADERS = new Set(['authorization', 'cookie', 'x-api-token']);
+
+function redactConfig(
+  config: InternalAxiosRequestConfig
+): Record<string, unknown> {
+  const headers: Record<string, unknown> = {};
+  if (config.headers) {
+    for (const [key, value] of Object.entries(config.headers)) {
+      headers[key] = REDACTED_HEADERS.has(key.toLowerCase())
+        ? '[redacted]'
+        : value;
+    }
+  }
+  return {
+    method: config.method,
+    url: config.url,
+    baseURL: config.baseURL,
+    headers,
+    params: config.params,
+    // Body intentionally omitted — could contain credentials on auth endpoints.
+  };
+}
 
 export class SmartRentApiClient {
   private readonly authClient: SmartRentAuthClient;
@@ -51,24 +97,17 @@ export class SmartRentApiClient {
     this.apiClient = this._initializeApiClient();
   }
 
-  /**
-   * Initialize Axios instance for SmartRent API requests
-   * @returns Axios instance
-   */
   private _initializeApiClient() {
     const apiClient = axios.create({
       baseURL: API_URL,
       headers: API_CLIENT_HEADERS,
+      timeout: 15000,
     });
     apiClient.interceptors.request.use(this._handleRequest.bind(this));
     apiClient.interceptors.response.use(this._handleResponse.bind(this));
     return apiClient;
   }
 
-  /**
-   * Get the SmartRent API access token
-   * @returns Oauth access token
-   */
   public async getAccessToken() {
     return this.authClient.getAccessToken({
       email: this.platform.config.email,
@@ -77,10 +116,6 @@ export class SmartRentApiClient {
     });
   }
 
-  /**
-   * Get the SmartRent API access token
-   * @returns Oauth access token
-   */
   public async getWebSocketToken() {
     return this.authClient.getWebSocketToken({
       email: this.platform.config.email,
@@ -89,32 +124,26 @@ export class SmartRentApiClient {
     });
   }
 
-  /**
-   * Attach the access token to the SmartRent API request and log the request
-   * @param config Axios request config
-   * @returns Axios request config
-   */
   private async _handleRequest(config: InternalAxiosRequestConfig) {
     const accessToken = await this.getAccessToken();
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${accessToken}`,
     } as AxiosRequestHeaders;
-    this.log.debug('Request:', JSON.stringify(config, null, 2));
+    this.log.debug('Request:', JSON.stringify(redactConfig(config)));
     return config;
   }
 
-  /**
-   * Log the SmartRent API response
-   * @param response Axios response
-   * @returns SmartRent response data payload
-   */
   private _handleResponse(response: AxiosResponse) {
-    this.log.debug('Response:', JSON.stringify(response.data, null, 2));
+    this.log.debug(
+      `Response ${response.status} from ${response.config.url}: ${
+        typeof response.data === 'object'
+          ? JSON.stringify(response.data).slice(0, 500)
+          : String(response.data).slice(0, 500)
+      }`
+    );
     return response;
   }
-
-  // API request methods
 
   public async get<T, D = unknown>(
     path: string,
@@ -144,69 +173,92 @@ export class SmartRentApiClient {
 }
 
 export class SmartRentWebsocketClient extends SmartRentApiClient {
-  public wsClient: Promise<WebSocket>;
   public readonly eventEmitter: EventEmitter;
-  private readonly devices: number[];
-  private reconnectAttempts: number = 0;
-  private readonly maxReconnectDelay: number = 60000; // 60 seconds max
-  private readonly baseReconnectDelay: number = 1000; // 1 second base
-  private isReconnecting: boolean = false;
-  private heartbeatInterval?: NodeJS.Timeout;
-  private readonly heartbeatIntervalMs: number = 30000; // 30 seconds
-  private heartbeatRef: number = 0;
+  private ws: WebSocket | null = null;
+  private wsReady: Promise<WebSocket>;
+  private wsReadyResolve!: (ws: WebSocket) => void;
+  private wsReadyReject!: (err: unknown) => void;
+  private readonly devices: number[] = [];
+  private reconnectAttempts = 0;
+  private readonly maxReconnectDelay = 60000;
+  private readonly baseReconnectDelay = 1000;
+  private isReconnecting = false;
+  private heartbeatTimer?: NodeJS.Timeout;
+  private heartbeatRef = 0;
+  private isShuttingDown = false;
 
   constructor(readonly platform: SmartRentPlatform) {
     super(platform);
     this.eventEmitter = new EventEmitter();
-    this.eventEmitter.setMaxListeners(50); // Allow many device subscriptions
-    this.devices = [];
-    this.wsClient = this._initializeWsClient();
+    this.eventEmitter.setMaxListeners(0); // unlimited; we manage our own subscriptions
+
+    this.wsReady = new Promise<WebSocket>((resolve, reject) => {
+      this.wsReadyResolve = resolve;
+      this.wsReadyReject = reject;
+    });
+    this._initializeWsClient();
   }
 
   /**
-   * Initialize WebSocket client for SmartRent API
-   * @returns WebSocket client
+   * Allow callers (the platform shutdown hook) to gracefully tear down.
    */
+  public shutdown() {
+    this.isShuttingDown = true;
+    this._stopHeartbeat();
+    if (this.ws) {
+      try {
+        this.ws.close(1000, 'shutdown');
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  private _resetReadyPromise() {
+    this.wsReady = new Promise<WebSocket>((resolve, reject) => {
+      this.wsReadyResolve = resolve;
+      this.wsReadyReject = reject;
+    });
+    // Avoid unhandled rejection warnings if nobody happens to be awaiting.
+    this.wsReady.catch(() => {});
+  }
+
   private async _initializeWsClient() {
+    if (this.isShuttingDown) {
+      return;
+    }
     this.log.debug('WebSocket connection opening');
     try {
       const token = String(await this.getAccessToken());
-      const wsClient = new WebSocket(
+      const ws = new WebSocket(
         WS_API_URL +
           '?' +
           new URLSearchParams({ token, vsn: WS_VERSION }).toString()
       );
-      wsClient.onopen = this._handleWsOpen.bind(this);
-      wsClient.onmessage = this._handleWsMessage.bind(this);
-      wsClient.onerror = this._handleWsError.bind(this);
-      wsClient.onclose = this._handleWsClose.bind(this);
-      return wsClient;
+      this.ws = ws;
+      ws.onopen = this._handleWsOpen.bind(this);
+      ws.onmessage = this._handleWsMessage.bind(this);
+      ws.onerror = this._handleWsError.bind(this);
+      ws.onclose = this._handleWsClose.bind(this);
     } catch (err) {
       this.log.error('Failed to initialize WebSocket:', String(err));
+      this.wsReadyReject(err);
+      this._resetReadyPromise();
       this._scheduleReconnect();
-      // Return a promise that will be replaced on reconnect
-      return new Promise<WebSocket>(() => {});
     }
   }
 
-  /**
-   * Calculate reconnect delay with exponential backoff and jitter
-   */
   private _getReconnectDelay(): number {
     const delay = Math.min(
       this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
       this.maxReconnectDelay
     );
-    // Add jitter (±25%) to avoid thundering herd
     const jitter = delay * 0.25 * (Math.random() * 2 - 1);
     return Math.round(delay + jitter);
   }
 
-  /**
-   * Schedule a reconnection attempt with exponential backoff
-   */
   private _scheduleReconnect() {
-    if (this.isReconnecting) {
+    if (this.isReconnecting || this.isShuttingDown) {
       return;
     }
     this.isReconnecting = true;
@@ -217,27 +269,42 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
     );
     setTimeout(() => {
       this.isReconnecting = false;
-      this.wsClient = this._initializeWsClient();
-    }, delay);
+      this._initializeWsClient();
+    }, delay).unref?.();
   }
 
   private _handleWsOpen() {
     this.log.info('WebSocket connection established');
-    this.reconnectAttempts = 0; // Reset backoff on successful connection
-    // Resubscribe all known devices
-    this.devices.forEach(device => this._sendSubscription(device));
-    // Start Phoenix heartbeat to keep connection alive
+    this.reconnectAttempts = 0;
+    if (this.ws) {
+      this.wsReadyResolve(this.ws);
+    }
     this._startHeartbeat();
+    this.devices.forEach(device => this._sendSubscription(device));
   }
 
   private _handleWsMessage(message: WebSocket.MessageEvent) {
-    this.log.debug(`WebSocket message received: Data: ${message.data}`);
+    this.log.debug(
+      `WebSocket message received: ${String(message.data).slice(0, 300)}`
+    );
     try {
-      const data: WSPayload = JSON.parse(String(message.data));
-      if (data[3] && data[3].includes('attribute_state')) {
-        const device = data[2].split(':')[1];
-        this.log.debug('Device event:', device, String(data[4]));
-        this.eventEmitter.emit(`device:${device}`, data[4]);
+      const data = JSON.parse(String(message.data)) as unknown[];
+      // Phoenix channels frame: [join_ref, ref, topic, event, payload]
+      const topic = data[2];
+      const event = data[3];
+      const payload = data[4];
+
+      if (
+        typeof topic === 'string' &&
+        topic.startsWith('devices:') &&
+        typeof event === 'string' &&
+        event.includes('attribute_state') &&
+        payload &&
+        typeof payload === 'object'
+      ) {
+        const deviceId = topic.split(':')[1];
+        this.log.debug('Device event:', deviceId, JSON.stringify(payload));
+        this.eventEmitter.emit(`device:${deviceId}`, payload as WSEvent);
       }
     } catch (err) {
       this.log.error('Failed to parse WebSocket message:', String(err));
@@ -246,19 +313,7 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
 
   private _handleWsError(error: WebSocket.ErrorEvent) {
     this.log.error(`WebSocket error: ${error.message}`);
-    // Close will be called after error, which triggers reconnect
-    this.wsClient
-      .then(client => {
-        if (
-          client.readyState === WebSocket.OPEN ||
-          client.readyState === WebSocket.CONNECTING
-        ) {
-          client.close();
-        }
-      })
-      .catch(() => {
-        // Already closed or failed, reconnect will happen in onclose
-      });
+    // close handler will fire next and trigger reconnect
   }
 
   private _handleWsClose(event: WebSocket.CloseEvent) {
@@ -266,67 +321,57 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
     this.log.info(
       `WebSocket connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`
     );
+    this.ws = null;
+    this._resetReadyPromise();
     this._scheduleReconnect();
   }
 
   /**
-   * Start sending Phoenix heartbeat messages to keep the connection alive.
-   * Without this, SmartRent's server closes the connection every ~45 seconds.
+   * Phoenix channels expect a periodic heartbeat or they'll close idle
+   * connections. Send one every 30 seconds.
    */
   private _startHeartbeat() {
     this._stopHeartbeat();
-    this.heartbeatInterval = setInterval(async () => {
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
       try {
-        const client = await this.wsClient;
-        if (client.readyState === WebSocket.OPEN) {
-          this.heartbeatRef++;
-          client.send(
-            JSON.stringify([
-              null,
-              String(this.heartbeatRef),
-              'phoenix',
-              'heartbeat',
-              {},
-            ])
-          );
-          this.log.debug('Sent heartbeat', this.heartbeatRef);
-        }
+        this.heartbeatRef++;
+        this.ws.send(
+          JSON.stringify([
+            null,
+            String(this.heartbeatRef),
+            'phoenix',
+            'heartbeat',
+            {},
+          ])
+        );
       } catch (err) {
         this.log.debug('Heartbeat send failed:', String(err));
       }
-    }, this.heartbeatIntervalMs);
+    }, 30000);
+    this.heartbeatTimer.unref?.();
   }
 
-  /**
-   * Stop the heartbeat interval
-   */
   private _stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
     }
   }
 
-  /**
-   * Send the subscription message for a device over the WebSocket
-   */
   private async _sendSubscription(deviceId: number) {
     try {
-      const client = await this.wsClient;
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(
-          JSON.stringify(<WSPayload>[
-            null,
-            null,
-            `devices:${deviceId}`,
-            'phx_join',
-            {},
-          ])
+      const ws = await this.wsReady;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify([null, null, `devices:${deviceId}`, 'phx_join', {}])
         );
         this.log.debug(`Subscribed to device: ${deviceId}`);
       } else {
         this.log.debug(
-          `WebSocket not ready, device ${deviceId} will be subscribed on reconnect`
+          `WebSocket not ready (state ${ws.readyState}), device ${deviceId} will be subscribed on reconnect`
         );
       }
     } catch (err) {
@@ -334,10 +379,6 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
     }
   }
 
-  /**
-   * Register a device for WebSocket events and subscribe
-   * @param deviceId Device ID
-   */
   public async subscribeDevice(deviceId: number) {
     this.log.debug(`Registering device: ${deviceId}`);
     if (!this.devices.includes(deviceId)) {
@@ -346,12 +387,24 @@ export class SmartRentWebsocketClient extends SmartRentApiClient {
     await this._sendSubscription(deviceId);
   }
 
-  /**
-   * Listen for events on a specific device
-   * @param deviceId Device ID
-   * @param handler Event handler function
-   */
   public onDeviceEvent(deviceId: string, handler: (event: WSEvent) => void) {
     this.eventEmitter.on(`device:${deviceId}`, handler);
+  }
+
+  /**
+   * Connection health snapshot for diagnostics.
+   */
+  public getStatus(): {
+    connected: boolean;
+    readyState: number | null;
+    subscribedDevices: number;
+    reconnectAttempts: number;
+  } {
+    return {
+      connected: this.ws?.readyState === WebSocket.OPEN,
+      readyState: this.ws?.readyState ?? null,
+      subscribedDevices: this.devices.length,
+      reconnectAttempts: this.reconnectAttempts,
+    };
   }
 }

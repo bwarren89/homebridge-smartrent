@@ -7,26 +7,31 @@ import { findBoolean, attrToBoolean, attrToNumber } from '../lib/utils.js';
 import { ATTR } from '../lib/attributes.js';
 import { BaseAccessory } from './base.js';
 
-export class LeakSensorAccessory extends BaseAccessory {
+/**
+ * Motion sensor accessory.
+ *
+ * SmartRent surfaces these via `sensor_notification` with a `motion`
+ * attribute that is true when motion is currently detected.
+ */
+export class MotionSensorAccessory extends BaseAccessory {
   private readonly service: Service;
   private readonly battery: Service;
-  private currentLeak: CharacteristicValue;
+  private currentMotion: boolean = false;
 
   constructor(platform: SmartRentPlatform, accessory: SmartRentAccessory) {
     super(platform, accessory, 'sensors');
 
     const C = this.platform.api.hap.Characteristic;
-    this.currentLeak = C.LeakDetected.LEAK_NOT_DETECTED;
 
     this.service =
-      this.accessory.getService(this.platform.api.hap.Service.LeakSensor) ||
-      this.accessory.addService(this.platform.api.hap.Service.LeakSensor);
+      this.accessory.getService(this.platform.api.hap.Service.MotionSensor) ||
+      this.accessory.addService(this.platform.api.hap.Service.MotionSensor);
 
     this.service.setCharacteristic(C.Name, accessory.context.device.name);
 
     this.service
-      .getCharacteristic(C.LeakDetected)
-      .onGet(this.handleLeakDetectedGet.bind(this));
+      .getCharacteristic(C.MotionDetected)
+      .onGet(this.handleMotionGet.bind(this));
 
     this.battery =
       this.accessory.getService(this.platform.api.hap.Service.Battery) ||
@@ -41,22 +46,14 @@ export class LeakSensorAccessory extends BaseAccessory {
     this.startPolling();
   }
 
-  private toLeakValue(leak: boolean): CharacteristicValue {
-    const C = this.platform.api.hap.Characteristic;
-    return leak
-      ? C.LeakDetected.LEAK_DETECTED
-      : C.LeakDetected.LEAK_NOT_DETECTED;
-  }
-
-  async handleLeakDetectedGet(): Promise<CharacteristicValue> {
-    return this.hapCall('GET LeakDetected', async () => {
+  async handleMotionGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET MotionDetected', async () => {
       const attrs = await this.platform.smartRentApi.getState<LeakSensorData>(
         this.hubId,
         this.deviceId
       );
-      const leak = findBoolean(attrs, ATTR.LEAK);
-      this.currentLeak = this.toLeakValue(leak);
-      return this.currentLeak;
+      this.currentMotion = findBoolean(attrs, ATTR.MOTION);
+      return this.currentMotion;
     });
   }
 
@@ -86,22 +83,17 @@ export class LeakSensorAccessory extends BaseAccessory {
 
   protected handleWsEvent(event: WSEvent) {
     const C = this.platform.api.hap.Characteristic;
-    if (event.name === ATTR.LEAK) {
-      const next = this.toLeakValue(attrToBoolean(event.last_read_state));
+    if (event.name === ATTR.MOTION) {
+      const next = attrToBoolean(event.last_read_state);
       if (
         this.updateIfChanged(
           this.service,
-          C.LeakDetected,
+          C.MotionDetected,
           next,
-          this.currentLeak
+          this.currentMotion
         )
       ) {
-        this.currentLeak = next;
-        this.log.info(
-          `[${this.accessory.displayName}] leak event: ${
-            next === C.LeakDetected.LEAK_DETECTED ? 'DETECTED' : 'cleared'
-          }`
-        );
+        this.currentMotion = next;
       }
     } else if (event.name === ATTR.BATTERY_LEVEL) {
       const level = Math.round(attrToNumber(event.last_read_state));
@@ -120,12 +112,17 @@ export class LeakSensorAccessory extends BaseAccessory {
       this.hubId,
       this.deviceId
     );
-    const next = this.toLeakValue(findBoolean(attrs, ATTR.LEAK));
+    const next = findBoolean(attrs, ATTR.MOTION);
     const C = this.platform.api.hap.Characteristic;
     if (
-      this.updateIfChanged(this.service, C.LeakDetected, next, this.currentLeak)
+      this.updateIfChanged(
+        this.service,
+        C.MotionDetected,
+        next,
+        this.currentMotion
+      )
     ) {
-      this.currentLeak = next;
+      this.currentMotion = next;
     }
   }
 }

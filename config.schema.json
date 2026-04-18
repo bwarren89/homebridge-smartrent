@@ -3,7 +3,7 @@
   "pluginType": "platform",
   "strictValidation": true,
   "headerDisplay": "Homebridge plugin for SmartRent installations",
-  "footerDisplay": "For documentation please see [GitHub](https://github.com/jabrown93/homebridge-smartrent)",
+  "footerDisplay": "For documentation please see [GitHub](https://github.com/somekindawizard/homebridge-smartrent)",
   "schema": {
     "type": "object",
     "properties": {
@@ -27,12 +27,32 @@
         "maxLength": 32,
         "description": "If you have enabled two-factor authentication on your SmartRent account, enter the seed secret here."
       },
+      "unitName": {
+        "title": "Unit name",
+        "type": "string",
+        "required": false,
+        "description": "Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app."
+      },
       "enableLeakSensors": {
         "title": "Enable leak sensors",
         "type": "boolean",
         "required": false,
         "default": true,
         "description": "Uncheck to disable leak sensors."
+      },
+      "enableContactSensors": {
+        "title": "Enable contact (door/window) sensors",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "Uncheck to disable contact sensors."
+      },
+      "enableMotionSensors": {
+        "title": "Enable motion sensors",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "Uncheck to disable motion sensors."
       },
       "enableThermostats": {
         "title": "Enable thermostats",
@@ -56,31 +76,83 @@
         "description": "Uncheck to disable switches."
       },
       "enableSwitchMultiLevels": {
-        "title": "Enable switch multi-levels",
+        "title": "Enable dimmer switches",
         "type": "boolean",
         "required": false,
         "default": true,
-        "description": "Uncheck to disable switch multi-levels."
-      },
-      "unitName": {
-        "title": "Unit name",
-        "type": "string",
-        "required": false,
-        "description": "Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app."
+        "description": "Uncheck to disable multilevel/dimmer switches."
       },
       "enableAutoLock": {
-        "title": "Enable auto locking after a delay from the last unlock",
+        "title": "Auto-lock after delay",
         "type": "boolean",
         "required": false,
         "default": false,
-        "description": "Uncheck to disable auto lock."
+        "description": "Automatically lock doors a set number of minutes after they're unlocked."
       },
       "autoLockDelayInMinutes": {
-        "title": "Auto lock delay in minutes",
+        "title": "Auto-lock delay (minutes)",
         "type": "integer",
         "required": false,
         "default": 5,
-        "description": "The delay in minutes after the last unlock to automatically lock the door."
+        "minimum": 1,
+        "description": "How many minutes after unlock to auto-lock. Only applies when auto-lock is enabled."
+      },
+      "useCelsiusDisplay": {
+        "title": "Display thermostat in Celsius",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Show thermostat temperatures in Celsius rather than Fahrenheit. Internal values remain SmartRent's native Fahrenheit."
+      },
+      "cacheTtlSeconds": {
+        "title": "State cache TTL (seconds)",
+        "type": "integer",
+        "required": false,
+        "default": 5,
+        "minimum": 0,
+        "maximum": 60,
+        "description": "How long to cache device state to reduce API calls. Lower = snappier, higher = gentler on SmartRent. WebSocket events invalidate the cache immediately. Set to 0 to disable caching."
+      },
+      "pollingIntervalSeconds": {
+        "title": "Fallback polling interval (seconds)",
+        "type": "integer",
+        "required": false,
+        "default": 30,
+        "minimum": 0,
+        "description": "How often to poll device state as a fallback when WebSocket events are missed. Set to 0 to disable polling."
+      },
+      "pollingOverrides": {
+        "title": "Per-device-type polling overrides",
+        "type": "object",
+        "required": false,
+        "expandable": true,
+        "expanded": false,
+        "properties": {
+          "locks": {
+            "title": "Locks (seconds)",
+            "type": "integer",
+            "required": false,
+            "minimum": 0
+          },
+          "thermostats": {
+            "title": "Thermostats (seconds)",
+            "type": "integer",
+            "required": false,
+            "minimum": 0
+          },
+          "switches": {
+            "title": "Switches & dimmers (seconds)",
+            "type": "integer",
+            "required": false,
+            "minimum": 0
+          },
+          "sensors": {
+            "title": "Sensors (seconds)",
+            "type": "integer",
+            "required": false,
+            "minimum": 0
+          }
+        }
       }
     }
   }

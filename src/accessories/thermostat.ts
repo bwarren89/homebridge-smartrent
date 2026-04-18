@@ -8,156 +8,88 @@ import {
   ThermostatMode,
 } from '../devices/index.js';
 import { WSEvent } from '../lib/client.js';
-import { findStateByName } from '../lib/utils.js';
+import { findString, findNumber, attrToNumber } from '../lib/utils.js';
+import { ATTR } from '../lib/attributes.js';
+import { BaseAccessory } from './base.js';
 
-export class ThermostatAccessory {
+/**
+ * Convert Fahrenheit (SmartRent's internal unit) to Celsius (HomeKit's
+ * internal unit for all temperature characteristics).
+ */
+function fToC(f: number): number {
+  return ((f - 32) * 5) / 9;
+}
+
+/**
+ * Convert Celsius back to Fahrenheit.
+ */
+function cToF(c: number): number {
+  return (c * 9) / 5 + 32;
+}
+
+export class ThermostatAccessory extends BaseAccessory {
   private readonly thermostatService: Service;
   private readonly fanService: Service;
 
-  private readonly state: {
-    hubId: string;
-    deviceId: string;
-    heating_cooling_state: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    current_temperature: {
-      current: CharacteristicValue;
-    };
-    target_temperature: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    temperature_display_units: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    current_relative_humidity: {
-      current: CharacteristicValue;
-    };
-    cooling_threshold_temperature: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    heating_threshold_temperature: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    fan_on: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-  };
+  // All temperatures are stored in Celsius (HomeKit's native unit).
+  private currentTemperatureC: number = 20;
+  private currentHumidity: number = 0;
+  private targetHeatingCoolingState: CharacteristicValue;
+  private currentHeatingCoolingState: CharacteristicValue;
+  private coolThresholdC: number = 24;
+  private heatThresholdC: number = 18;
+  private fanOn: boolean = false;
 
-  constructor(
-    private readonly platform: SmartRentPlatform,
-    private readonly accessory: SmartRentAccessory
-  ) {
-    this.state = {
-      hubId: this.accessory.context.device.room.hub_id.toString(),
-      deviceId: this.accessory.context.device.id.toString(),
-      heating_cooling_state: {
-        current:
-          this.platform.api.hap.Characteristic.CurrentHeatingCoolingState.OFF,
-        target:
-          this.platform.api.hap.Characteristic.TargetHeatingCoolingState.OFF,
-      },
-      current_temperature: {
-        current: -270,
-      },
-      target_temperature: {
-        current: 10,
-        target: 10,
-      },
-      temperature_display_units: {
-        current:
-          this.platform.api.hap.Characteristic.TemperatureDisplayUnits
-            .FAHRENHEIT,
-        target:
-          this.platform.api.hap.Characteristic.TemperatureDisplayUnits
-            .FAHRENHEIT,
-      },
-      current_relative_humidity: {
-        current: 0,
-      },
-      cooling_threshold_temperature: {
-        current: 10,
-        target: 10,
-      },
-      heating_threshold_temperature: {
-        current: 0,
-        target: 0,
-      },
-      fan_on: {
-        current: 0,
-        target: 0,
-      },
-    };
+  constructor(platform: SmartRentPlatform, accessory: SmartRentAccessory) {
+    super(platform, accessory, 'thermostats');
 
-    this.accessory
-      .getService(this.platform.api.hap.Service.AccessoryInformation)!
-      .setCharacteristic(
-        this.platform.api.hap.Characteristic.SerialNumber,
-        this.accessory.context.device.id.toString()
-      );
+    const C = this.platform.api.hap.Characteristic;
+    this.targetHeatingCoolingState = C.TargetHeatingCoolingState.OFF;
+    this.currentHeatingCoolingState = C.CurrentHeatingCoolingState.OFF;
 
     this.thermostatService =
       this.accessory.getService(this.platform.api.hap.Service.Thermostat) ||
       this.accessory.addService(this.platform.api.hap.Service.Thermostat);
 
     this.thermostatService.setCharacteristic(
-      this.platform.api.hap.Characteristic.Name,
+      C.Name,
       accessory.context.device.name
     );
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.CurrentHeatingCoolingState
-      )
+      .getCharacteristic(C.CurrentHeatingCoolingState)
       .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.TargetHeatingCoolingState
-      )
+      .getCharacteristic(C.TargetHeatingCoolingState)
       .onGet(this.handleTargetHeatingCoolingStateGet.bind(this))
       .onSet(this.handleTargetHeatingCoolingStateSet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.CurrentTemperature
-      )
+      .getCharacteristic(C.CurrentTemperature)
       .onGet(this.handleCurrentTemperatureGet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(this.platform.api.hap.Characteristic.TargetTemperature)
+      .getCharacteristic(C.TargetTemperature)
       .onGet(this.handleTargetTemperatureGet.bind(this))
       .onSet(this.handleTargetTemperatureSet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.TemperatureDisplayUnits
-      )
+      .getCharacteristic(C.TemperatureDisplayUnits)
       .onGet(this.handleTemperatureDisplayUnitsGet.bind(this))
       .onSet(this.handleTemperatureDisplayUnitsSet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.CurrentRelativeHumidity
-      )
+      .getCharacteristic(C.CurrentRelativeHumidity)
       .onGet(this.handleCurrentRelativeHumidityGet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.CoolingThresholdTemperature
-      )
+      .getCharacteristic(C.CoolingThresholdTemperature)
       .onGet(this.handleCoolingThresholdTemperatureGet.bind(this))
       .onSet(this.handleCoolingThresholdTemperatureSet.bind(this));
 
     this.thermostatService
-      .getCharacteristic(
-        this.platform.api.hap.Characteristic.HeatingThresholdTemperature
-      )
+      .getCharacteristic(C.HeatingThresholdTemperature)
       .onGet(this.handleHeatingThresholdTemperatureGet.bind(this))
       .onSet(this.handleHeatingThresholdTemperatureSet.bind(this));
 
@@ -166,575 +98,463 @@ export class ThermostatAccessory {
       this.accessory.addService(this.platform.api.hap.Service.Fan);
 
     this.fanService.setCharacteristic(
-      this.platform.api.hap.Characteristic.Name,
-      accessory.context.device.name
+      C.Name,
+      `${accessory.context.device.name} Fan`
     );
 
     this.fanService
-      .getCharacteristic(this.platform.api.hap.Characteristic.On)
-      .onGet(this.handleOnGet.bind(this))
-      .onSet(this.handleOnSet.bind(this));
+      .getCharacteristic(C.On)
+      .onGet(this.handleFanOnGet.bind(this))
+      .onSet(this.handleFanOnSet.bind(this));
 
-    this.platform.smartRentApi.websocket.onDeviceEvent(
-      this.state.deviceId,
-      (event: WSEvent) => this.handleDeviceStateChanged(event)
-    );
+    this.startPolling();
   }
 
-  private handleDeviceStateChanged(event: WSEvent) {
-    this.platform.log.debug(
-      `Device ${this.state.deviceId} state changed: ${JSON.stringify(event)}`
-    );
-    switch (event.name) {
-      case 'fan_mode':
-        this.handleFanModeChange(event);
-        break;
-      case 'mode':
-        this.handleModeChange(event);
-        break;
-      case 'cooling_setpoint':
-        this.handleCoolingSetpointChange(event);
-        break;
-      case 'heating_setpoint':
-        this.handleHeatingSetpointChange(event);
-        break;
-      case 'current_temp':
-        this.handleTempChange(event);
-        break;
-      case 'current_humidity':
-        this.handleHumidtyChange(event);
-        break;
-    }
-  }
+  // ---- Mode conversions ---------------------------------------------------
 
-  private handleHumidtyChange(event: WSEvent) {
-    const humidity = Math.round(Number(event.last_read_state));
-    this.state.current_relative_humidity.current = humidity;
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.CurrentRelativeHumidity,
-      humidity
-    );
-  }
-
-  private handleTempChange(event: WSEvent) {
-    const temperature = this.toTemperatureCharacteristic(
-      Number(event.last_read_state)
-    );
-    this.state.current_temperature.current = temperature;
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.CurrentTemperature,
-      temperature
-    );
-  }
-
-  private handleHeatingSetpointChange(event: WSEvent) {
-    const heatingSetpoint = this.toTemperatureCharacteristic(
-      Number(event.last_read_state)
-    );
-    this.state.heating_threshold_temperature.current = heatingSetpoint;
-    this.state.heating_threshold_temperature.target = heatingSetpoint;
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.HeatingThresholdTemperature,
-      heatingSetpoint
-    );
-  }
-
-  private handleCoolingSetpointChange(event: WSEvent) {
-    const coolingSetpoint = this.toTemperatureCharacteristic(
-      Number(event.last_read_state)
-    );
-    this.state.cooling_threshold_temperature.current = coolingSetpoint;
-    this.state.cooling_threshold_temperature.target = coolingSetpoint;
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.CoolingThresholdTemperature,
-      coolingSetpoint
-    );
-  }
-
-  private handleModeChange(event: WSEvent) {
-    const mode = this.toTargetHeatingCoolingStateCharacteristic(
-      event.last_read_state as ThermostatMode
-    );
-    let actualMode = mode;
-    if (
-      mode ===
-      this.platform.api.hap.Characteristic.TargetHeatingCoolingState.AUTO
-    ) {
-      if (
-        this.state.target_temperature.current <
-        this.state.current_temperature.current
-      ) {
-        actualMode =
-          this.platform.api.hap.Characteristic.CurrentHeatingCoolingState.COOL;
-      } else if (
-        this.state.target_temperature.current >
-        this.state.current_temperature.current
-      ) {
-        actualMode =
-          this.platform.api.hap.Characteristic.CurrentHeatingCoolingState.HEAT;
-      } else {
-        actualMode =
-          this.platform.api.hap.Characteristic.CurrentHeatingCoolingState.OFF;
-      }
-    }
-    this.state.heating_cooling_state.current = actualMode;
-    this.state.heating_cooling_state.target = mode;
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.CurrentHeatingCoolingState,
-      actualMode
-    );
-    this.thermostatService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.TargetHeatingCoolingState,
-      mode
-    );
-  }
-
-  private handleFanModeChange(event: WSEvent) {
-    const fanMode = this.toFanOnCharacteristic(
-      event.last_read_state as ThermostatFanMode
-    );
-    this.state.fan_on.current = fanMode;
-    this.fanService.updateCharacteristic(
-      this.platform.api.hap.Characteristic.On,
-      fanMode
-    );
-  }
-
-  private toCurrentHeatingCoolingStateCharacteristic(
-    thermostatMode: ThermostatMode
-  ) {
-    switch (thermostatMode) {
+  private toCurrentHeatingCoolingState(
+    mode: ThermostatMode | null
+  ): CharacteristicValue {
+    const C = this.platform.api.hap.Characteristic;
+    switch (mode) {
       case 'cool':
-        return this.platform.api.hap.Characteristic.CurrentHeatingCoolingState
-          .COOL;
+        return C.CurrentHeatingCoolingState.COOL;
       case 'heat':
-        return this.platform.api.hap.Characteristic.CurrentHeatingCoolingState
-          .HEAT;
-      case 'off':
-      default:
-        return this.platform.api.hap.Characteristic.CurrentHeatingCoolingState
-          .OFF;
-    }
-  }
-
-  private toTargetHeatingCoolingStateCharacteristic(
-    thermostatMode: ThermostatMode
-  ) {
-    switch (thermostatMode) {
-      case 'cool':
-        return this.platform.api.hap.Characteristic.TargetHeatingCoolingState
-          .COOL;
-      case 'heat':
-        return this.platform.api.hap.Characteristic.TargetHeatingCoolingState
-          .HEAT;
+        return C.CurrentHeatingCoolingState.HEAT;
       case 'auto':
-        return this.platform.api.hap.Characteristic.TargetHeatingCoolingState
-          .AUTO;
+        // For 'auto' the actual current state depends on whether we're heating
+        // or cooling right now, derived from setpoints vs current temp.
+        if (this.currentTemperatureC > this.coolThresholdC) {
+          return C.CurrentHeatingCoolingState.COOL;
+        }
+        if (this.currentTemperatureC < this.heatThresholdC) {
+          return C.CurrentHeatingCoolingState.HEAT;
+        }
+        return C.CurrentHeatingCoolingState.OFF;
       case 'off':
       default:
-        return this.platform.api.hap.Characteristic.TargetHeatingCoolingState
-          .OFF;
+        return C.CurrentHeatingCoolingState.OFF;
     }
   }
 
-  private fromTargetHeatingCoolingStateCharacteristic(
-    targetHeatingCoolingState
+  private toTargetHeatingCoolingState(
+    mode: ThermostatMode | null
+  ): CharacteristicValue {
+    const C = this.platform.api.hap.Characteristic;
+    switch (mode) {
+      case 'cool':
+        return C.TargetHeatingCoolingState.COOL;
+      case 'heat':
+        return C.TargetHeatingCoolingState.HEAT;
+      case 'auto':
+        return C.TargetHeatingCoolingState.AUTO;
+      case 'off':
+      default:
+        return C.TargetHeatingCoolingState.OFF;
+    }
+  }
+
+  private fromTargetHeatingCoolingState(
+    value: CharacteristicValue
   ): ThermostatMode {
-    switch (targetHeatingCoolingState) {
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.COOL:
+    const C = this.platform.api.hap.Characteristic;
+    switch (value) {
+      case C.TargetHeatingCoolingState.COOL:
         return 'cool';
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.HEAT:
+      case C.TargetHeatingCoolingState.HEAT:
         return 'heat';
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.AUTO:
+      case C.TargetHeatingCoolingState.AUTO:
         return 'auto';
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.OFF:
+      case C.TargetHeatingCoolingState.OFF:
       default:
         return 'off';
     }
   }
 
-  private toTargetTemperatureCharacteristic(
-    thermostatAttributes: DeviceAttribute[]
-  ) {
-    const mode = findStateByName(
-      thermostatAttributes,
-      'mode'
-    ) as ThermostatMode;
-    const cool_target_temp = findStateByName(
-      thermostatAttributes,
-      'cool_target_temp'
-    ) as number;
-    const heat_target_temp = findStateByName(
-      thermostatAttributes,
-      'heat_target_temp'
-    ) as number;
-    switch (mode) {
-      case 'off':
-      case 'cool':
-        return this.toTemperatureCharacteristic(cool_target_temp);
-      case 'heat':
-      case 'auto':
+  private toFanOnCharacteristic(fanMode: ThermostatFanMode | null): boolean {
+    return fanMode === 'on';
+  }
+
+  /**
+   * Compute the appropriate "single" target temperature for HomeKit based on
+   * the current target mode. HomeKit shows TargetTemperature as a single
+   * value when in HEAT or COOL, and uses the threshold characteristics when
+   * in AUTO. We still need a sensible value for AUTO (HomeKit polls it).
+   */
+  private deriveTargetTempC(attrs: DeviceAttribute[]): number {
+    const C = this.platform.api.hap.Characteristic;
+    const coolF = findNumber(attrs, ATTR.COOL_SETPOINT);
+    const heatF = findNumber(attrs, ATTR.HEAT_SETPOINT);
+    switch (this.targetHeatingCoolingState) {
+      case C.TargetHeatingCoolingState.COOL:
+        return fToC(coolF);
+      case C.TargetHeatingCoolingState.HEAT:
+        return fToC(heatF);
+      case C.TargetHeatingCoolingState.AUTO:
+        // BUG FIX: previous code returned just heat_target_temp in AUTO.
+        // The midpoint is a more honest single-value representation.
+        return fToC((coolF + heatF) / 2);
+      case C.TargetHeatingCoolingState.OFF:
       default:
-        return this.toTemperatureCharacteristic(heat_target_temp);
+        // Best guess fallback — use whichever is closer to current temp.
+        return fToC(
+          Math.abs(coolF - cToF(this.currentTemperatureC)) <
+            Math.abs(heatF - cToF(this.currentTemperatureC))
+            ? coolF
+            : heatF
+        );
     }
   }
 
+  /**
+   * BUG FIX: previous code switched on `currentHeatingCoolingState` (which
+   * is CURRENT, not TARGET, and never holds AUTO) when deciding which
+   * setpoint attribute to PATCH. As a result, target temp sets in AUTO mode
+   * were silently dropped. We switch on TARGET state instead.
+   */
   private fromTargetTemperatureCharacteristic(
-    temperature: number
+    targetC: number
   ): DeviceAttribute[] {
-    const target_temp = this.fromTemperatureCharacteristic(temperature);
-    switch (this.state.heating_cooling_state.current) {
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.OFF:
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.COOL:
-        return [{ name: 'cool_target_temp', state: target_temp }];
-
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.HEAT:
-        return [{ name: 'heat_target_temp', state: target_temp }];
-
-      case this.platform.api.hap.Characteristic.TargetHeatingCoolingState.AUTO:
+    const C = this.platform.api.hap.Characteristic;
+    const targetF = cToF(targetC);
+    switch (this.targetHeatingCoolingState) {
+      case C.TargetHeatingCoolingState.COOL:
+        return [{ name: ATTR.COOL_SETPOINT, state: targetF }];
+      case C.TargetHeatingCoolingState.HEAT:
+        return [{ name: ATTR.HEAT_SETPOINT, state: targetF }];
+      case C.TargetHeatingCoolingState.AUTO:
+      case C.TargetHeatingCoolingState.OFF:
       default:
+        // In AUTO, HomeKit drives setpoints via the threshold characteristics.
+        // Setting both to the same value would collapse the deadband.
+        // Return empty so we no-op rather than confuse the system.
+        this.log.debug(
+          `[${this.accessory.displayName}] target temp set ignored in AUTO/OFF; use thresholds instead`
+        );
         return [];
     }
   }
 
-  private fromTemperatureCharacteristic(temperature: number) {
-    this.platform.log.debug(
-      'fromTemperatureCharacteristic' +
-        temperature +
-        '=>' +
-        (temperature * 9) / 5 +
-        32
+  // ---- Characteristic handlers --------------------------------------------
+
+  async handleCurrentHeatingCoolingStateGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET CurrentHeatingCoolingState', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.currentHeatingCoolingState = this.toCurrentHeatingCoolingState(
+        findString(attrs, ATTR.MODE) as ThermostatMode | null
+      );
+      return this.currentHeatingCoolingState;
+    });
+  }
+
+  async handleTargetHeatingCoolingStateGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET TargetHeatingCoolingState', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.targetHeatingCoolingState = this.toTargetHeatingCoolingState(
+        findString(attrs, ATTR.MODE) as ThermostatMode | null
+      );
+      return this.targetHeatingCoolingState;
+    });
+  }
+
+  async handleTargetHeatingCoolingStateSet(value: CharacteristicValue) {
+    return this.hapCall('SET TargetHeatingCoolingState', async () => {
+      this.targetHeatingCoolingState = value;
+      const mode = this.fromTargetHeatingCoolingState(value);
+      const attrs = await this.platform.smartRentApi.setState<ThermostatData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.MODE, state: mode }]
+      );
+      const newMode = findString(attrs, ATTR.MODE) as ThermostatMode | null;
+      this.currentHeatingCoolingState =
+        this.toCurrentHeatingCoolingState(newMode);
+    });
+  }
+
+  async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET CurrentTemperature', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.currentTemperatureC = fToC(findNumber(attrs, ATTR.CURRENT_TEMP));
+      return this.currentTemperatureC;
+    });
+  }
+
+  async handleTargetTemperatureGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET TargetTemperature', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      return this.deriveTargetTempC(attrs);
+    });
+  }
+
+  async handleTargetTemperatureSet(value: CharacteristicValue) {
+    return this.hapCall('SET TargetTemperature', async () => {
+      const targetC = Number(value);
+      const attrs = this.fromTargetTemperatureCharacteristic(targetC);
+      if (attrs.length === 0) {
+        return;
+      }
+      await this.platform.smartRentApi.setState<ThermostatData>(
+        this.hubId,
+        this.deviceId,
+        attrs
+      );
+      // Update local state for the relevant threshold.
+      const C = this.platform.api.hap.Characteristic;
+      if (this.targetHeatingCoolingState === C.TargetHeatingCoolingState.COOL) {
+        this.coolThresholdC = targetC;
+      } else if (
+        this.targetHeatingCoolingState === C.TargetHeatingCoolingState.HEAT
+      ) {
+        this.heatThresholdC = targetC;
+      }
+    });
+  }
+
+  async handleTemperatureDisplayUnitsGet(): Promise<CharacteristicValue> {
+    const C = this.platform.api.hap.Characteristic;
+    return this.platform.config.useCelsiusDisplay
+      ? C.TemperatureDisplayUnits.CELSIUS
+      : C.TemperatureDisplayUnits.FAHRENHEIT;
+  }
+
+  async handleTemperatureDisplayUnitsSet() {
+    // HomeKit lets users change this in the app, but it's purely a display
+    // preference — the underlying values are always Celsius. We accept and
+    // ignore writes; the source of truth is the plugin config.
+    this.log.debug(
+      `[${this.accessory.displayName}] display units write ignored; controlled by config`
     );
-    return (temperature * 9) / 5 + 32;
   }
 
-  private toTemperatureCharacteristic(temperature: number) {
-    this.platform.log.debug(
-      'toTemperatureCharacteristic' +
-        temperature +
-        '=>' +
-        ((temperature - 32) * 5) / 9
+  async handleCurrentRelativeHumidityGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET CurrentRelativeHumidity', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.currentHumidity = findNumber(attrs, ATTR.CURRENT_HUMIDITY);
+      return this.currentHumidity;
+    });
+  }
+
+  async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET CoolingThresholdTemperature', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.coolThresholdC = fToC(findNumber(attrs, ATTR.COOL_SETPOINT));
+      return this.coolThresholdC;
+    });
+  }
+
+  async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
+    return this.hapCall('SET CoolingThresholdTemperature', async () => {
+      const targetC = Number(value);
+      const targetF = cToF(targetC);
+      await this.platform.smartRentApi.setState<ThermostatData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.COOL_SETPOINT, state: targetF }]
+      );
+      this.coolThresholdC = targetC;
+    });
+  }
+
+  async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET HeatingThresholdTemperature', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.heatThresholdC = fToC(findNumber(attrs, ATTR.HEAT_SETPOINT));
+      return this.heatThresholdC;
+    });
+  }
+
+  async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
+    return this.hapCall('SET HeatingThresholdTemperature', async () => {
+      const targetC = Number(value);
+      const targetF = cToF(targetC);
+      await this.platform.smartRentApi.setState<ThermostatData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.HEAT_SETPOINT, state: targetF }]
+      );
+      this.heatThresholdC = targetC;
+    });
+  }
+
+  async handleFanOnGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET Fan On', async () => {
+      const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+        this.hubId,
+        this.deviceId
+      );
+      this.fanOn = this.toFanOnCharacteristic(
+        findString(attrs, ATTR.FAN_MODE) as ThermostatFanMode | null
+      );
+      return this.fanOn;
+    });
+  }
+
+  async handleFanOnSet(value: CharacteristicValue) {
+    return this.hapCall('SET Fan On', async () => {
+      const desired: ThermostatFanMode = value ? 'on' : 'auto';
+      await this.platform.smartRentApi.setState<ThermostatData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.FAN_MODE, state: desired }]
+      );
+      this.fanOn = !!value;
+    });
+  }
+
+  // ---- WS event handling --------------------------------------------------
+
+  protected handleWsEvent(event: WSEvent) {
+    const C = this.platform.api.hap.Characteristic;
+    switch (event.name) {
+      case ATTR.MODE: {
+        const mode = event.last_read_state as ThermostatMode;
+        const target = this.toTargetHeatingCoolingState(mode);
+        const current = this.toCurrentHeatingCoolingState(mode);
+        this.thermostatService.updateCharacteristic(
+          C.TargetHeatingCoolingState,
+          target
+        );
+        this.thermostatService.updateCharacteristic(
+          C.CurrentHeatingCoolingState,
+          current
+        );
+        this.targetHeatingCoolingState = target;
+        this.currentHeatingCoolingState = current;
+        break;
+      }
+      case ATTR.FAN_MODE: {
+        const fanOn = this.toFanOnCharacteristic(
+          event.last_read_state as ThermostatFanMode
+        );
+        if (this.updateIfChanged(this.fanService, C.On, fanOn, this.fanOn)) {
+          this.fanOn = fanOn;
+        }
+        break;
+      }
+      case ATTR.CURRENT_TEMP: {
+        const tempC = fToC(attrToNumber(event.last_read_state));
+        this.currentTemperatureC = tempC;
+        this.thermostatService.updateCharacteristic(
+          C.CurrentTemperature,
+          tempC
+        );
+        break;
+      }
+      case ATTR.CURRENT_HUMIDITY: {
+        const h = Math.round(attrToNumber(event.last_read_state));
+        this.currentHumidity = h;
+        this.thermostatService.updateCharacteristic(
+          C.CurrentRelativeHumidity,
+          h
+        );
+        break;
+      }
+      case ATTR.COOL_SETPOINT: {
+        const c = fToC(attrToNumber(event.last_read_state));
+        this.coolThresholdC = c;
+        this.thermostatService.updateCharacteristic(
+          C.CoolingThresholdTemperature,
+          c
+        );
+        break;
+      }
+      case ATTR.HEAT_SETPOINT: {
+        const c = fToC(attrToNumber(event.last_read_state));
+        this.heatThresholdC = c;
+        this.thermostatService.updateCharacteristic(
+          C.HeatingThresholdTemperature,
+          c
+        );
+        break;
+      }
+    }
+  }
+
+  protected async pollState() {
+    const attrs = await this.platform.smartRentApi.getState<ThermostatData>(
+      this.hubId,
+      this.deviceId
     );
-    return ((temperature - 32) * 5) / 9;
-  }
+    const C = this.platform.api.hap.Characteristic;
 
-  private toFanOnCharacteristic(thermostatFanMode: ThermostatFanMode) {
-    switch (thermostatFanMode) {
-      case 'on':
-        return true;
-      case 'auto':
-        return false;
-      default:
-        return false;
-    }
-  }
-
-  async handleCurrentHeatingCoolingStateGet() {
-    this.platform.log.debug('Triggered GET CurrentHeatingCoolingState');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue = this.toCurrentHeatingCoolingStateCharacteristic(
-        findStateByName(thermostatAttributes, 'mode') as ThermostatMode
-      );
-      this.state.heating_cooling_state.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error(
-        'Error getting heating/cooling state:',
-        String(err)
-      );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleTargetHeatingCoolingStateGet() {
-    this.platform.log.debug('Triggered GET TargetHeatingCoolingState');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue = this.toTargetHeatingCoolingStateCharacteristic(
-        findStateByName(thermostatAttributes, 'mode') as ThermostatMode
-      );
-      this.state.heating_cooling_state.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error(
-        'Error getting target heating/cooling state:',
-        String(err)
-      );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleTargetHeatingCoolingStateSet(value) {
-    this.platform.log.debug('Triggered SET TargetHeatingCoolingState:', value);
-    try {
-      this.state.heating_cooling_state.target = value;
-      const mode = this.fromTargetHeatingCoolingStateCharacteristic(value);
-      const newAttributes = [{ name: 'mode', state: mode }];
-      const thermostatAttributes =
-        await this.platform.smartRentApi.setState<ThermostatData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      this.state.heating_cooling_state.current =
-        this.toTargetHeatingCoolingStateCharacteristic(
-          findStateByName(thermostatAttributes, 'mode') as ThermostatMode
-        );
-    } catch (err) {
-      this.platform.log.error(
-        'Error setting heating/cooling state:',
-        String(err)
-      );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleCurrentTemperatureGet() {
-    this.platform.log.debug('Triggered GET CurrentTemperature');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue = this.toTemperatureCharacteristic(
-        findStateByName(thermostatAttributes, 'current_temp') as number
-      );
-      this.state.current_temperature.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error(
-        'Error getting current temperature:',
-        String(err)
-      );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleTargetTemperatureGet() {
-    this.platform.log.debug('Triggered GET TargetTemperature');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue =
-        this.toTargetTemperatureCharacteristic(thermostatAttributes);
-      this.state.target_temperature.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting target temperature:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleTargetTemperatureSet(value) {
-    this.platform.log.debug('Triggered SET TargetTemperature:', value);
-    try {
-      this.state.target_temperature.target = value;
-      const target_temp_attributes =
-        this.fromTargetTemperatureCharacteristic(value);
-      const thermostatAttributes =
-        await this.platform.smartRentApi.setState<ThermostatData>(
-          this.state.hubId,
-          this.state.deviceId,
-          target_temp_attributes
-        );
-      this.state.target_temperature.current =
-        this.toTargetTemperatureCharacteristic(thermostatAttributes);
-    } catch (err) {
-      this.platform.log.error('Error setting target temperature:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleTemperatureDisplayUnitsGet() {
-    this.platform.log.debug('Triggered GET TemperatureDisplayUnits');
-    return this.platform.api.hap.Characteristic.TemperatureDisplayUnits
-      .FAHRENHEIT;
-  }
-
-  async handleTemperatureDisplayUnitsSet(value) {
-    this.platform.log.debug('Triggered SET TemperatureDisplayUnits:', value);
-  }
-
-  async handleCurrentRelativeHumidityGet() {
-    this.platform.log.debug('Triggered GET CurrentRelativeHumidity');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue = findStateByName(
-        thermostatAttributes,
-        'current_humidity'
-      ) as number;
-      this.state.current_relative_humidity.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting humidity:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleCoolingThresholdTemperatureGet() {
-    this.platform.log.debug('Triggered GET CoolingThresholdTemperature');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
-      );
-      const currentValue = this.toTemperatureCharacteristic(
-        findStateByName(thermostatAttributes, 'cool_target_temp') as number
-      );
-      this.state.cooling_threshold_temperature.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting cooling threshold:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
-
-  async handleCoolingThresholdTemperatureSet(value) {
-    this.platform.log.debug(
-      'Triggered SET CoolingThresholdTemperature:',
-      value
+    const mode = findString(attrs, ATTR.MODE) as ThermostatMode | null;
+    const newTarget = this.toTargetHeatingCoolingState(mode);
+    const newCurrent = this.toCurrentHeatingCoolingState(mode);
+    const newTempC = fToC(findNumber(attrs, ATTR.CURRENT_TEMP));
+    const newHumidity = findNumber(attrs, ATTR.CURRENT_HUMIDITY);
+    const newCoolC = fToC(findNumber(attrs, ATTR.COOL_SETPOINT));
+    const newHeatC = fToC(findNumber(attrs, ATTR.HEAT_SETPOINT));
+    const newFanOn = this.toFanOnCharacteristic(
+      findString(attrs, ATTR.FAN_MODE) as ThermostatFanMode | null
     );
-    try {
-      this.state.cooling_threshold_temperature.target = value;
-      const cool_target_temp = this.fromTemperatureCharacteristic(value);
-      const newAttributes = [
-        { name: 'cool_target_temp', state: cool_target_temp },
-      ];
-      const thermostatAttributes =
-        await this.platform.smartRentApi.setState<ThermostatData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      this.state.heating_threshold_temperature.current =
-        this.toTemperatureCharacteristic(
-          findStateByName(thermostatAttributes, 'cool_target_temp') as number
-        );
-    } catch (err) {
-      this.platform.log.error('Error setting cooling threshold:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
-  }
 
-  async handleHeatingThresholdTemperatureGet() {
-    this.platform.log.debug('Triggered GET HeatingThresholdTemperature');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
+    if (newTarget !== this.targetHeatingCoolingState) {
+      this.thermostatService.updateCharacteristic(
+        C.TargetHeatingCoolingState,
+        newTarget
       );
-      const currentValue = this.toTemperatureCharacteristic(
-        findStateByName(thermostatAttributes, 'heat_target_temp') as number
-      );
-      this.state.heating_threshold_temperature.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting heating threshold:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
+      this.targetHeatingCoolingState = newTarget;
     }
-  }
-
-  async handleHeatingThresholdTemperatureSet(value) {
-    this.platform.log.debug(
-      'Triggered SET HeatingThresholdTemperature:',
-      value
-    );
-    try {
-      this.state.heating_threshold_temperature.target = value;
-      const heat_target_temp = this.fromTemperatureCharacteristic(value);
-      const newAttributes = [
-        { name: 'heat_target_temp', state: heat_target_temp },
-      ];
-      const thermostatAttributes =
-        await this.platform.smartRentApi.setState<ThermostatData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      this.state.heating_threshold_temperature.current =
-        this.toTemperatureCharacteristic(
-          findStateByName(thermostatAttributes, 'heat_target_temp') as number
-        );
-    } catch (err) {
-      this.platform.log.error('Error setting heating threshold:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+    if (newCurrent !== this.currentHeatingCoolingState) {
+      this.thermostatService.updateCharacteristic(
+        C.CurrentHeatingCoolingState,
+        newCurrent
       );
+      this.currentHeatingCoolingState = newCurrent;
     }
-  }
-
-  async handleOnGet() {
-    this.platform.log.debug('Triggered GET On');
-    try {
-      const thermostatAttributes = await this.platform.smartRentApi.getState(
-        this.state.hubId,
-        this.state.deviceId
+    if (Math.abs(newTempC - this.currentTemperatureC) > 0.05) {
+      this.thermostatService.updateCharacteristic(
+        C.CurrentTemperature,
+        newTempC
       );
-      const currentValue = this.toFanOnCharacteristic(
-        findStateByName(thermostatAttributes, 'fan_mode') as ThermostatFanMode
-      );
-      this.state.fan_on.current = currentValue;
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting fan state:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
+      this.currentTemperatureC = newTempC;
     }
-  }
-
-  async handleOnSet(value) {
-    this.platform.log.debug('Triggered SET On:', value);
-    try {
-      this.state.fan_on.target = value;
-      const fan_mode = value ? 'on' : 'auto';
-      const newAttributes = [{ name: 'fan_mode', state: fan_mode }];
-      const thermostatAttributes =
-        await this.platform.smartRentApi.setState<ThermostatData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      this.state.fan_on.current = this.toFanOnCharacteristic(
-        findStateByName(thermostatAttributes, 'fan_mode') as ThermostatFanMode
+    if (newHumidity !== this.currentHumidity) {
+      this.thermostatService.updateCharacteristic(
+        C.CurrentRelativeHumidity,
+        newHumidity
       );
-    } catch (err) {
-      this.platform.log.error('Error setting fan state:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+      this.currentHumidity = newHumidity;
+    }
+    if (Math.abs(newCoolC - this.coolThresholdC) > 0.05) {
+      this.thermostatService.updateCharacteristic(
+        C.CoolingThresholdTemperature,
+        newCoolC
       );
+      this.coolThresholdC = newCoolC;
+    }
+    if (Math.abs(newHeatC - this.heatThresholdC) > 0.05) {
+      this.thermostatService.updateCharacteristic(
+        C.HeatingThresholdTemperature,
+        newHeatC
+      );
+      this.heatThresholdC = newHeatC;
+    }
+    if (newFanOn !== this.fanOn) {
+      this.fanService.updateCharacteristic(C.On, newFanOn);
+      this.fanOn = newFanOn;
     }
   }
 }

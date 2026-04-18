@@ -7,26 +7,38 @@ import { findBoolean, attrToBoolean, attrToNumber } from '../lib/utils.js';
 import { ATTR } from '../lib/attributes.js';
 import { BaseAccessory } from './base.js';
 
-export class LeakSensorAccessory extends BaseAccessory {
+/**
+ * Contact sensor (door/window) accessory.
+ *
+ * SmartRent surfaces these via the same `sensor_notification` device type
+ * as leak sensors, but with a `contact` attribute instead of `leak`.
+ *
+ * Convention used here:
+ *   - `contact = true`  → contact CLOSED (door shut)
+ *   - `contact = false` → contact OPEN
+ *
+ * If your device reports the inverse, set `contactInverted: true` in config.
+ */
+export class ContactSensorAccessory extends BaseAccessory {
   private readonly service: Service;
   private readonly battery: Service;
-  private currentLeak: CharacteristicValue;
+  private currentContact: CharacteristicValue;
 
   constructor(platform: SmartRentPlatform, accessory: SmartRentAccessory) {
     super(platform, accessory, 'sensors');
 
     const C = this.platform.api.hap.Characteristic;
-    this.currentLeak = C.LeakDetected.LEAK_NOT_DETECTED;
+    this.currentContact = C.ContactSensorState.CONTACT_DETECTED;
 
     this.service =
-      this.accessory.getService(this.platform.api.hap.Service.LeakSensor) ||
-      this.accessory.addService(this.platform.api.hap.Service.LeakSensor);
+      this.accessory.getService(this.platform.api.hap.Service.ContactSensor) ||
+      this.accessory.addService(this.platform.api.hap.Service.ContactSensor);
 
     this.service.setCharacteristic(C.Name, accessory.context.device.name);
 
     this.service
-      .getCharacteristic(C.LeakDetected)
-      .onGet(this.handleLeakDetectedGet.bind(this));
+      .getCharacteristic(C.ContactSensorState)
+      .onGet(this.handleContactGet.bind(this));
 
     this.battery =
       this.accessory.getService(this.platform.api.hap.Service.Battery) ||
@@ -41,22 +53,23 @@ export class LeakSensorAccessory extends BaseAccessory {
     this.startPolling();
   }
 
-  private toLeakValue(leak: boolean): CharacteristicValue {
+  private toContactValue(closed: boolean): CharacteristicValue {
     const C = this.platform.api.hap.Characteristic;
-    return leak
-      ? C.LeakDetected.LEAK_DETECTED
-      : C.LeakDetected.LEAK_NOT_DETECTED;
+    // HomeKit: CONTACT_DETECTED = closed (0), CONTACT_NOT_DETECTED = open (1)
+    return closed
+      ? C.ContactSensorState.CONTACT_DETECTED
+      : C.ContactSensorState.CONTACT_NOT_DETECTED;
   }
 
-  async handleLeakDetectedGet(): Promise<CharacteristicValue> {
-    return this.hapCall('GET LeakDetected', async () => {
+  async handleContactGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET ContactSensorState', async () => {
       const attrs = await this.platform.smartRentApi.getState<LeakSensorData>(
         this.hubId,
         this.deviceId
       );
-      const leak = findBoolean(attrs, ATTR.LEAK);
-      this.currentLeak = this.toLeakValue(leak);
-      return this.currentLeak;
+      const closed = findBoolean(attrs, ATTR.CONTACT);
+      this.currentContact = this.toContactValue(closed);
+      return this.currentContact;
     });
   }
 
@@ -86,22 +99,17 @@ export class LeakSensorAccessory extends BaseAccessory {
 
   protected handleWsEvent(event: WSEvent) {
     const C = this.platform.api.hap.Characteristic;
-    if (event.name === ATTR.LEAK) {
-      const next = this.toLeakValue(attrToBoolean(event.last_read_state));
+    if (event.name === ATTR.CONTACT) {
+      const next = this.toContactValue(attrToBoolean(event.last_read_state));
       if (
         this.updateIfChanged(
           this.service,
-          C.LeakDetected,
+          C.ContactSensorState,
           next,
-          this.currentLeak
+          this.currentContact
         )
       ) {
-        this.currentLeak = next;
-        this.log.info(
-          `[${this.accessory.displayName}] leak event: ${
-            next === C.LeakDetected.LEAK_DETECTED ? 'DETECTED' : 'cleared'
-          }`
-        );
+        this.currentContact = next;
       }
     } else if (event.name === ATTR.BATTERY_LEVEL) {
       const level = Math.round(attrToNumber(event.last_read_state));
@@ -120,12 +128,17 @@ export class LeakSensorAccessory extends BaseAccessory {
       this.hubId,
       this.deviceId
     );
-    const next = this.toLeakValue(findBoolean(attrs, ATTR.LEAK));
+    const next = this.toContactValue(findBoolean(attrs, ATTR.CONTACT));
     const C = this.platform.api.hap.Characteristic;
     if (
-      this.updateIfChanged(this.service, C.LeakDetected, next, this.currentLeak)
+      this.updateIfChanged(
+        this.service,
+        C.ContactSensorState,
+        next,
+        this.currentContact
+      )
     ) {
-      this.currentLeak = next;
+      this.currentContact = next;
     }
   }
 }

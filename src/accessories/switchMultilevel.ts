@@ -3,190 +3,167 @@ import { SmartRentPlatform } from '../platform.js';
 import type { SmartRentAccessory } from './index.js';
 import { SwitchMultilevelData } from '../devices/index.js';
 import { WSEvent } from '../lib/client.js';
-import { findStateByName } from '../lib/utils.js';
+import { findNumber, attrToBoolean, attrToNumber } from '../lib/utils.js';
+import { ATTR } from '../lib/attributes.js';
+import { BaseAccessory } from './base.js';
 
 /**
- * Switch Multilevel Accessory
+ * Multilevel switch (dimmer) accessory.
+ *
+ * SmartRent represents these as having both an `on` boolean and a `level`
+ * (0-100) integer. We expose both via HomeKit's Lightbulb service.
  */
-export class SwitchMultilevelAccessory {
+export class SwitchMultilevelAccessory extends BaseAccessory {
   private readonly service: Service;
+  private currentOn: boolean = false;
+  private currentBrightness: number = 0;
 
-  private readonly state: {
-    hubId: string;
-    deviceId: string;
-    on: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-    brightness: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-  };
+  constructor(platform: SmartRentPlatform, accessory: SmartRentAccessory) {
+    super(platform, accessory, 'switches');
 
-  constructor(
-    private readonly platform: SmartRentPlatform,
-    private readonly accessory: SmartRentAccessory
-  ) {
-    this.state = {
-      hubId: this.accessory.context.device.room.hub_id.toString(),
-      deviceId: this.accessory.context.device.id.toString(),
-      on: {
-        current: 0,
-        target: 0,
-      },
-      brightness: {
-        current: 0,
-        target: 0,
-      },
-    };
-
-    this.accessory
-      .getService(this.platform.api.hap.Service.AccessoryInformation)!
-      .setCharacteristic(
-        this.platform.api.hap.Characteristic.SerialNumber,
-        this.accessory.context.device.id.toString()
-      );
-
+    const C = this.platform.api.hap.Characteristic;
     this.service =
       this.accessory.getService(this.platform.api.hap.Service.Lightbulb) ||
       this.accessory.addService(this.platform.api.hap.Service.Lightbulb);
 
-    this.service.setCharacteristic(
-      this.platform.api.hap.Characteristic.Name,
-      accessory.context.device.name
-    );
+    this.service.setCharacteristic(C.Name, accessory.context.device.name);
 
     this.service
-      .getCharacteristic(this.platform.api.hap.Characteristic.On)
+      .getCharacteristic(C.On)
       .onGet(this.handleOnGet.bind(this))
       .onSet(this.handleOnSet.bind(this));
 
     this.service
-      .getCharacteristic(this.platform.api.hap.Characteristic.Brightness)
+      .getCharacteristic(C.Brightness)
       .onGet(this.handleBrightnessGet.bind(this))
       .onSet(this.handleBrightnessSet.bind(this));
 
-    this.platform.smartRentApi.websocket.onDeviceEvent(
-      this.state.deviceId,
-      (event: WSEvent) => this.handleDeviceStateChanged(event)
-    );
+    this.startPolling();
   }
 
-  async handleDeviceStateChanged(event: WSEvent) {
-    this.platform.log.debug(
-      'Received websocket Switch Multilevel event:',
-      event
-    );
-    if (event.name !== 'on') {
-      return;
+  private clampBrightness(value: number): number {
+    if (Number.isNaN(value)) {
+      return 0;
     }
-
-    this.state.on.current = 0;
-
-    this.service.updateCharacteristic(
-      this.platform.api.hap.Characteristic.On,
-      this.state.on.current
-    );
+    return Math.max(0, Math.min(100, Math.round(value)));
   }
 
   async handleOnGet(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET On');
-    try {
-      const switchMultilevelAttributes =
+    return this.hapCall('GET On', async () => {
+      const attrs =
         await this.platform.smartRentApi.getState<SwitchMultilevelData>(
-          this.state.hubId,
-          this.state.deviceId
+          this.hubId,
+          this.deviceId
         );
-      const levelAttribute = findStateByName(
-        switchMultilevelAttributes,
-        'level'
-      ) as number;
-      const level = Number(levelAttribute) > 0 ? 1 : 0;
-      this.state.on.current = level;
-      return level;
-    } catch (err) {
-      this.platform.log.error(
-        'Error getting multilevel switch state:',
-        String(err)
-      );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
+      const level = findNumber(attrs, ATTR.LEVEL);
+      this.currentBrightness = this.clampBrightness(level);
+      this.currentOn = level > 0;
+      return this.currentOn;
+    });
   }
 
   async handleOnSet(value: CharacteristicValue) {
-    this.platform.log.debug('Triggered SET On:', value);
-    try {
-      this.state.on.target = value === true ? 1 : 0;
-      const newAttributes = [
-        { name: 'level', state: value === true ? 100 : 0 },
-      ];
-      const switchMultilevelAttributes =
-        await this.platform.smartRentApi.setState<SwitchMultilevelData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      const levelAttribute = findStateByName(
-        switchMultilevelAttributes,
-        'level'
-      ) as number;
-      this.state.on.current = Number(levelAttribute) > 0 ? 1 : 0;
-    } catch (err) {
-      this.platform.log.error(
-        'Error setting multilevel switch state:',
-        String(err)
+    return this.hapCall('SET On', async () => {
+      const desired = !!value;
+      // Restore previous brightness when turning on (or 100 if it was 0).
+      const targetLevel = desired
+        ? this.currentBrightness > 0
+          ? this.currentBrightness
+          : 100
+        : 0;
+      await this.platform.smartRentApi.setState<SwitchMultilevelData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.LEVEL, state: targetLevel }]
       );
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
+      this.currentOn = desired;
+      this.currentBrightness = targetLevel;
+    });
   }
 
   async handleBrightnessGet(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET Brightness');
-    try {
-      const switchMultilevelAttributes =
-        await this.platform.smartRentApi.getState(
-          this.state.hubId,
-          this.state.deviceId
+    return this.hapCall('GET Brightness', async () => {
+      const attrs =
+        await this.platform.smartRentApi.getState<SwitchMultilevelData>(
+          this.hubId,
+          this.deviceId
         );
-      const level = findStateByName(
-        switchMultilevelAttributes,
-        'level'
-      ) as number;
-      this.state.on.current = level;
+      const level = this.clampBrightness(findNumber(attrs, ATTR.LEVEL));
+      this.currentBrightness = level;
+      this.currentOn = level > 0;
       return level;
-    } catch (err) {
-      this.platform.log.error('Error getting brightness:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
+    });
   }
 
   async handleBrightnessSet(value: CharacteristicValue) {
-    this.platform.log.debug('Triggered SET Brightness:', value);
-    try {
-      this.state.on.target = value;
-      const newAttributes = [{ name: 'level', state: Number(value) }];
-      const switchMultilevelAttributes =
-        await this.platform.smartRentApi.setState<SwitchMultilevelData>(
-          this.state.hubId,
-          this.state.deviceId,
-          newAttributes
-        );
-      this.state.on.current = findStateByName(
-        switchMultilevelAttributes,
-        'level'
-      ) as number;
-    } catch (err) {
-      this.platform.log.error('Error setting brightness:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+    return this.hapCall('SET Brightness', async () => {
+      const level = this.clampBrightness(Number(value));
+      await this.platform.smartRentApi.setState<SwitchMultilevelData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.LEVEL, state: level }]
       );
+      this.currentBrightness = level;
+      this.currentOn = level > 0;
+    });
+  }
+
+  /**
+   * BUG FIX: previous implementation only handled the `on` event and
+   * hardcoded `current = 0`, which silently turned every dimmer off in
+   * HomeKit on every state change. Also never handled `level` events at
+   * all, so brightness changes from outside HomeKit never propagated.
+   */
+  protected handleWsEvent(event: WSEvent) {
+    const C = this.platform.api.hap.Characteristic;
+    if (event.name === ATTR.ON) {
+      const next = attrToBoolean(event.last_read_state);
+      if (this.updateIfChanged(this.service, C.On, next, this.currentOn)) {
+        this.currentOn = next;
+      }
+    } else if (event.name === ATTR.LEVEL) {
+      const level = this.clampBrightness(attrToNumber(event.last_read_state));
+      const isOn = level > 0;
+      if (
+        this.updateIfChanged(
+          this.service,
+          C.Brightness,
+          level,
+          this.currentBrightness
+        )
+      ) {
+        this.currentBrightness = level;
+      }
+      if (this.updateIfChanged(this.service, C.On, isOn, this.currentOn)) {
+        this.currentOn = isOn;
+      }
+    }
+  }
+
+  protected async pollState() {
+    const attrs =
+      await this.platform.smartRentApi.getState<SwitchMultilevelData>(
+        this.hubId,
+        this.deviceId
+      );
+    const level = this.clampBrightness(findNumber(attrs, ATTR.LEVEL));
+    const isOn = level > 0;
+    const C = this.platform.api.hap.Characteristic;
+    if (
+      this.updateIfChanged(
+        this.service,
+        C.Brightness,
+        level,
+        this.currentBrightness
+      )
+    ) {
+      this.currentBrightness = level;
+    }
+    if (this.updateIfChanged(this.service, C.On, isOn, this.currentOn)) {
+      this.log.info(
+        `[${this.accessory.displayName}] poll: dimmer → ${isOn ? `ON @ ${level}%` : 'OFF'}`
+      );
+      this.currentOn = isOn;
     }
   }
 }

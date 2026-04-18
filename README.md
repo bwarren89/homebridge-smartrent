@@ -17,6 +17,30 @@ Unofficial [Homebridge](https://homebridge.io) plugin for [SmartRent](https://sm
 
 ## Changes from upstream
 
+This fork has diverged significantly from the original. Highlights:
+
+### Bug fixes (vs upstream 2.x)
+
+- **Locks** no longer report inverted state due to `Boolean('false') === true`.
+- **Dimmers** no longer turn off in HomeKit on every WebSocket event (the original handler hardcoded `on = 0` and ignored brightness changes from outside HomeKit entirely).
+- **Thermostat target temperature** writes in AUTO mode are no longer silently dropped.
+- **Thermostat AUTO mode** reports the midpoint of heat/cool setpoints rather than the heat setpoint alone.
+- **WebSocket connection** survives idle periods (Phoenix heartbeats added) and recovers correctly from init failures (no more never-resolving promises).
+- **Bearer tokens** are no longer logged in debug output.
+
+### New features
+
+- **Contact sensors** (door/window) and **motion sensors** are now surfaced as HomeKit accessories.
+- **Per-device fallback polling** keeps state in sync when WebSocket events are missed (configurable per device type).
+- **State caching** dramatically reduces API calls during HomeKit's burst characteristic reads.
+- **Low-battery status** for battery-powered devices.
+- **Dimmer brightness** is restored to its previous value when toggled back on, instead of jumping to 100%.
+- **Celsius display** option for non-US users.
+- **Config validation** with clear startup errors instead of cryptic runtime failures.
+- **Graceful shutdown** with proper timer cleanup.
+
+### Other changes from the original fork point
+
 - **Broadened Node.js support**: Works with Node.js 20, 22, and 24+ (upstream required Node 24 only)
 - **Removed automated release pipeline**: Manual `npm publish` for simplicity
 - **Republished under `@prismwizard` scope**
@@ -27,6 +51,8 @@ Homebridge SmartRent currently supports these devices through a SmartRent hub:
 
 - 🔒 Locks
 - 💧 Leak sensors
+- 🚪 Contact sensors (doors/windows)
+- 👁️ Motion sensors
 - 🔌 Switches
 - 🌡 Thermostats
 - 🎚 Multilevel (Dimmer) Switches
@@ -61,14 +87,48 @@ Homebridge SmartRent currently supports these devices through a SmartRent hub:
 
 ## Configuration
 
-All configuration values are strings.
+### Required
 
-| Property    | Description                                                                                                                          |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `email`     | SmartRent account email                                                                                                              |
-| `password`  | SmartRent account password                                                                                                           |
-| `tfaSecret` | If you have enabled two-factor authentication on your SmartRent account, enter the secret used to seed the 2FA token                 |
-| `unitName`  | Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app. |
+| Property    | Type   | Description                                                                                                                          |
+| ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `email`     | string | SmartRent account email                                                                                                              |
+| `password`  | string | SmartRent account password                                                                                                           |
+| `tfaSecret` | string | If you have enabled two-factor authentication on your SmartRent account, enter the secret used to seed the 2FA token                 |
+| `unitName`  | string | Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app. |
+
+### Device toggles (all default to `true`)
+
+| Property                  | Description                          |
+| ------------------------- | ------------------------------------ |
+| `enableLeakSensors`       | Surface leak sensors                 |
+| `enableContactSensors`    | Surface door/window sensors          |
+| `enableMotionSensors`     | Surface motion sensors               |
+| `enableLocks`             | Surface locks                        |
+| `enableSwitches`          | Surface binary switches              |
+| `enableSwitchMultiLevels` | Surface dimmer (multilevel) switches |
+| `enableThermostats`       | Surface thermostats                  |
+
+### Lock behavior
+
+| Property                 | Type    | Default | Description                                             |
+| ------------------------ | ------- | ------- | ------------------------------------------------------- |
+| `enableAutoLock`         | boolean | `false` | Automatically re-lock after a delay following an unlock |
+| `autoLockDelayInMinutes` | integer | `5`     | Minutes to wait before auto-locking                     |
+
+### Tuning
+
+| Property                 | Type    | Default | Description                                                                                           |
+| ------------------------ | ------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `cacheTtlSeconds`        | integer | `5`     | How long to cache device state to reduce API calls. WS events invalidate immediately. `0` to disable. |
+| `pollingIntervalSeconds` | integer | `30`    | Fallback polling interval when WS events are missed. `0` to disable.                                  |
+| `pollingOverrides`       | object  | —       | Per-type polling overrides: `{ locks, thermostats, switches, sensors }` (each in seconds).            |
+| `useCelsiusDisplay`      | boolean | `false` | Display thermostat values in Celsius. Internal values remain SmartRent's native Fahrenheit.           |
+
+### Run tests
+
+```sh
+npm test
+```
 
 ## 🛠 Development
 

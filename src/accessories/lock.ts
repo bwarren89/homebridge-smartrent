@@ -1,304 +1,248 @@
 import { CharacteristicValue, Service } from 'homebridge';
 import { SmartRentPlatform } from '../platform.js';
 import type { SmartRentAccessory } from './index.js';
-import { LockData } from '../devices';
+import { LockData } from '../devices/index.js';
 import { WSEvent } from '../lib/client.js';
-import { findStateByName } from '../lib/utils.js';
+import { findBoolean, attrToBoolean, attrToNumber } from '../lib/utils.js';
+import { ATTR } from '../lib/attributes.js';
+import { BaseAccessory } from './base.js';
 
-/**
- * Lock Accessory
- * An instance of this class is created for each accessory the platform registers
- * Each accessory may expose multiple services of different service types.
- */
-export class LockAccessory {
+export class LockAccessory extends BaseAccessory {
   private readonly service: Service;
   private readonly battery: Service;
-  private timer?: NodeJS.Timeout;
-  private timerSet: boolean = false;
-  private readonly POLL_INTERVAL = 30000; // 30 seconds - fallback polling
+  private autoLockTimer?: NodeJS.Timeout;
 
-  private readonly state: {
-    hubId: string;
-    deviceId: string;
-    locked: {
-      current: CharacteristicValue;
-      target: CharacteristicValue;
-    };
-  };
+  private currentLockedState: CharacteristicValue;
+  private targetLockedState: CharacteristicValue;
 
-  constructor(
-    private readonly platform: SmartRentPlatform,
-    private readonly accessory: SmartRentAccessory
-  ) {
-    this.state = {
-      hubId: this.accessory.context.device.room.hub_id.toString(),
-      deviceId: this.accessory.context.device.id.toString(),
-      locked: {
-        current: this.platform.api.hap.Characteristic.LockTargetState.UNSECURED,
-        target: this.platform.api.hap.Characteristic.LockTargetState.UNSECURED,
-      },
-    };
+  constructor(platform: SmartRentPlatform, accessory: SmartRentAccessory) {
+    super(platform, accessory, 'locks');
 
-    // set accessory information
-    this.accessory
-      .getService(this.platform.api.hap.Service.AccessoryInformation)!
-      .setCharacteristic(
-        this.platform.api.hap.Characteristic.SerialNumber,
-        this.accessory.context.device.id.toString()
-      );
+    const C = this.platform.api.hap.Characteristic;
+    this.currentLockedState = C.LockCurrentState.UNSECURED;
+    this.targetLockedState = C.LockTargetState.UNSECURED;
 
-    // set the battery level service for the lock accessory
     this.battery =
       this.accessory.getService(this.platform.api.hap.Service.Battery) ||
       this.accessory.addService(this.platform.api.hap.Service.Battery);
     this.battery
-      .getCharacteristic(this.platform.api.hap.Characteristic.BatteryLevel)
+      .getCharacteristic(C.BatteryLevel)
       .onGet(this.handleBatteryLevelGet.bind(this));
+    this.battery
+      .getCharacteristic(C.StatusLowBattery)
+      .onGet(this.handleStatusLowBatteryGet.bind(this));
 
-    // get the LockMechanism service if it exists, otherwise create a new LockMechanism service
     this.service =
       this.accessory.getService(this.platform.api.hap.Service.LockMechanism) ||
       this.accessory.addService(this.platform.api.hap.Service.LockMechanism);
 
-    // set the service name, this is what is displayed as the default name on the Home app
-    this.service.setCharacteristic(
-      this.platform.api.hap.Characteristic.Name,
-      accessory.context.device.name
-    );
+    this.service.setCharacteristic(C.Name, accessory.context.device.name);
 
-    // create handlers for required characteristics
-    // see https://developers.homebridge.io/#/service/LockMechanism
     this.service
-      .getCharacteristic(this.platform.api.hap.Characteristic.LockCurrentState)
+      .getCharacteristic(C.LockCurrentState)
       .onGet(this.handleLockCurrentStateGet.bind(this));
 
     this.service
-      .getCharacteristic(this.platform.api.hap.Characteristic.LockTargetState)
+      .getCharacteristic(C.LockTargetState)
       .onGet(this.handleLockTargetStateGet.bind(this))
       .onSet(this.handleLockTargetStateSet.bind(this));
 
-    // subscribe to the lock state change event using EventEmitter
-    this.platform.smartRentApi.websocket.onDeviceEvent(
-      this.state.deviceId,
-      this.handleLockEvent.bind(this)
-    );
-
-    // Start fallback polling to keep state in sync
     this.startPolling();
   }
 
-  /**
-   * Handle requests to get the current value of the "Battery Level" characteristic
-   */
+  private toLockState(locked: boolean): CharacteristicValue {
+    const C = this.platform.api.hap.Characteristic;
+    return locked ? C.LockCurrentState.SECURED : C.LockCurrentState.UNSECURED;
+  }
+
   async handleBatteryLevelGet(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Triggered GET BatteryLevel');
-    try {
-      const lockData = await this.platform.smartRentApi.getData<LockData>(
-        this.state.hubId,
-        this.state.deviceId
+    return this.hapCall('GET BatteryLevel', async () => {
+      const data = await this.platform.smartRentApi.getData<LockData>(
+        this.hubId,
+        this.deviceId
       );
-      this.platform.log.debug('Lock Data', lockData);
-      return Math.round(Number(lockData.battery_level));
-    } catch (err) {
-      this.platform.log.error('Error getting battery level:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
+      return Math.round(Number(data.battery_level ?? 0));
+    });
   }
 
-  private readonly LOCKED: string = 'locked';
+  async handleStatusLowBatteryGet(): Promise<CharacteristicValue> {
+    return this.hapCall('GET StatusLowBattery', async () => {
+      const data = await this.platform.smartRentApi.getData<LockData>(
+        this.hubId,
+        this.deviceId
+      );
+      const level = Number(data.battery_level ?? 100);
+      const C = this.platform.api.hap.Characteristic;
+      return level < 20
+        ? C.StatusLowBattery.BATTERY_LEVEL_LOW
+        : C.StatusLowBattery.BATTERY_LEVEL_NORMAL;
+    });
+  }
 
-  /**
-   * Handle requests to get the current value of the "Lock Current State" characteristic
-   */
   async handleLockCurrentStateGet(): Promise<CharacteristicValue> {
-    this.platform.log.debug(
-      'Triggered GET LockCurrentState Start',
-      this.state.locked.current
-    );
-    try {
-      const lockAttributes =
-        await this.platform.smartRentApi.getState<LockData>(
-          this.state.hubId,
-          this.state.deviceId
-        );
-      const locked = findStateByName(lockAttributes, this.LOCKED) as string;
-      this.platform.log.debug(
-        'Lock Attributes',
-        JSON.stringify(lockAttributes)
+    return this.hapCall('GET LockCurrentState', async () => {
+      const attrs = await this.platform.smartRentApi.getState<LockData>(
+        this.hubId,
+        this.deviceId
       );
-      const currentValue =
-        locked === 'true'
-          ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-          : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
-      this.state.locked.current = currentValue;
-      this.platform.log.debug(
-        'Triggered GET LockCurrentState Done',
-        this.state.locked.current
-      );
-      return currentValue;
-    } catch (err) {
-      this.platform.log.error('Error getting lock current state:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      );
-    }
+      const locked = findBoolean(attrs, ATTR.LOCKED);
+      this.currentLockedState = this.toLockState(locked);
+      return this.currentLockedState;
+    });
   }
 
-  /**
-   * Handle requests to get the current value of the "Lock Target State" characteristic
-   */
   async handleLockTargetStateGet(): Promise<CharacteristicValue> {
-    this.platform.log.debug(
-      'Triggered GET LockTargetState',
-      this.state.locked.target
-    );
-    try {
-      const lockAttributes =
-        await this.platform.smartRentApi.getState<LockData>(
-          this.state.hubId,
-          this.state.deviceId
-        );
-      const locked = findStateByName(lockAttributes, this.LOCKED) as boolean;
-      return locked
-        ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-        : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
-    } catch (err) {
-      this.platform.log.error('Error getting lock target state:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+    return this.hapCall('GET LockTargetState', async () => {
+      const attrs = await this.platform.smartRentApi.getState<LockData>(
+        this.hubId,
+        this.deviceId
       );
-    }
+      // BUG FIX: previous code cast as `boolean`, which made
+      // `Boolean('false')` evaluate to `true` and reported a locked door
+      // as UNSECURED. Use proper string-to-boolean parsing.
+      const locked = findBoolean(attrs, ATTR.LOCKED);
+      const C = this.platform.api.hap.Characteristic;
+      return locked ? C.LockTargetState.SECURED : C.LockTargetState.UNSECURED;
+    });
   }
 
-  /**
-   * Handle requests to set the "Lock Target State" characteristic
-   */
   async handleLockTargetStateSet(value: CharacteristicValue) {
-    this.platform.log.debug('Triggered SET LockTargetState:', value);
-    try {
-      this.state.locked.target = value;
-      const attributes = [{ name: this.LOCKED, state: !!value }];
-      const lockAttributes =
-        await this.platform.smartRentApi.setState<LockData>(
-          this.state.hubId,
-          this.state.deviceId,
-          attributes
-        );
-      this.scheduleAutoLock(value);
-      this.platform.log.debug('Completed SET LockTargetState:', lockAttributes);
-    } catch (err) {
-      this.platform.log.error('Error setting lock target state:', String(err));
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+    return this.hapCall('SET LockTargetState', async () => {
+      const C = this.platform.api.hap.Characteristic;
+      this.targetLockedState = value;
+      const lockBool = value === C.LockTargetState.SECURED;
+      await this.platform.smartRentApi.setState<LockData>(
+        this.hubId,
+        this.deviceId,
+        [{ name: ATTR.LOCKED, state: lockBool }]
       );
-    }
+      // Optimistically reflect the new state in HomeKit before the WS event
+      // arrives. The WS handler will reconfirm.
+      this.currentLockedState = this.toLockState(lockBool);
+      this.service.updateCharacteristic(
+        C.LockCurrentState,
+        this.currentLockedState
+      );
+      this.scheduleAutoLock(value);
+    });
   }
 
   private scheduleAutoLock(value: CharacteristicValue) {
-    if (
-      value ===
-        this.platform.api.hap.Characteristic.LockTargetState.UNSECURED &&
-      this.platform.config.enableAutoLock &&
-      this.platform.config.autoLockDelayInMinutes
-    ) {
-      if (this.timerSet) {
-        return;
-      }
-      this.platform.log.debug(
-        'Lock is unlocked, starting timer to relock in ',
-        this.platform.config.autoLockDelayInMinutes,
-        ' minutes'
-      );
-      this.timerSet = true;
-      this.timer = setTimeout(
-        async () => {
-          this.platform.log.debug('Relocking lock');
-          try {
-            await this.handleLockTargetStateSet(true);
-          } catch (err) {
-            this.platform.log.error('Error auto-relocking:', String(err));
-          }
-          this.timerSet = false;
-        },
-        this.platform.config.autoLockDelayInMinutes * 60 * 1000
-      );
-    } else if (this.timer) {
-      this.platform.log.debug('Lock is locked, clearing timer');
-      clearTimeout(this.timer);
-      this.timerSet = false;
-    }
-  }
+    const C = this.platform.api.hap.Characteristic;
+    const isUnsecured = value === C.LockTargetState.UNSECURED;
 
-  /**
-   * Handle lock websocket events
-   */
-  async handleLockEvent(event: WSEvent) {
-    this.platform.log.debug('Received event on Lock: ', event);
-    if (event.name !== this.LOCKED) {
+    // If we just locked, cancel any pending auto-lock.
+    if (!isUnsecured) {
+      if (this.autoLockTimer) {
+        this.log.debug(
+          `[${this.accessory.displayName}] lock locked, clearing auto-lock timer`
+        );
+        clearTimeout(this.autoLockTimer);
+        this.autoLockTimer = undefined;
+      }
       return;
     }
 
-    const currentValue =
-      event.last_read_state === 'true'
-        ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-        : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
-    this.state.locked.current = currentValue;
-    this.state.locked.target = currentValue;
-    this.service.updateCharacteristic(
-      this.platform.api.hap.Characteristic.LockCurrentState,
-      currentValue
+    if (
+      !this.platform.config.enableAutoLock ||
+      !this.platform.config.autoLockDelayInMinutes
+    ) {
+      return;
+    }
+    if (this.autoLockTimer) {
+      // Already scheduled, don't double-schedule.
+      return;
+    }
+
+    const delayMin = this.platform.config.autoLockDelayInMinutes;
+    this.log.debug(
+      `[${this.accessory.displayName}] unlocked; auto-lock in ${delayMin} min`
     );
-    this.service.updateCharacteristic(
-      this.platform.api.hap.Characteristic.LockTargetState,
-      currentValue
+    this.autoLockTimer = setTimeout(
+      async () => {
+        this.autoLockTimer = undefined;
+        try {
+          await this.handleLockTargetStateSet(C.LockTargetState.SECURED);
+        } catch (err) {
+          this.log.error(
+            `[${this.accessory.displayName}] auto-relock failed:`,
+            String(err)
+          );
+        }
+      },
+      delayMin * 60 * 1000
     );
-    this.scheduleAutoLock(currentValue);
+    this.autoLockTimer.unref?.();
   }
 
-  /**
-   * Fallback polling to keep lock state in sync when WebSocket events are missed.
-   * Runs every 30 seconds.
-   */
-  private startPolling() {
-    setInterval(async () => {
-      try {
-        const lockAttributes =
-          await this.platform.smartRentApi.getState<LockData>(
-            this.state.hubId,
-            this.state.deviceId
-          );
-        const locked = findStateByName(lockAttributes, this.LOCKED);
-        const currentValue =
-          locked === 'true'
-            ? this.platform.api.hap.Characteristic.LockTargetState.SECURED
-            : this.platform.api.hap.Characteristic.LockTargetState.UNSECURED;
+  protected handleWsEvent(event: WSEvent) {
+    if (event.name === ATTR.LOCKED) {
+      const locked = attrToBoolean(event.last_read_state);
+      const C = this.platform.api.hap.Characteristic;
+      const lockState = this.toLockState(locked);
+      const targetState = locked
+        ? C.LockTargetState.SECURED
+        : C.LockTargetState.UNSECURED;
 
-        // Only update if state actually changed (avoids unnecessary HomeKit chatter)
-        if (this.state.locked.current !== currentValue) {
-          this.platform.log.info(
-            'Polling detected lock state change:',
-            currentValue ===
-              this.platform.api.hap.Characteristic.LockTargetState.SECURED
-              ? 'LOCKED'
-              : 'UNLOCKED'
-          );
-          this.state.locked.current = currentValue;
-          this.state.locked.target = currentValue;
-          this.service.updateCharacteristic(
-            this.platform.api.hap.Characteristic.LockCurrentState,
-            currentValue
-          );
-          this.service.updateCharacteristic(
-            this.platform.api.hap.Characteristic.LockTargetState,
-            currentValue
-          );
-          this.scheduleAutoLock(currentValue);
-        }
-      } catch (err) {
-        this.platform.log.debug('Polling error (will retry):', String(err));
-      }
-    }, this.POLL_INTERVAL);
+      this.updateIfChanged(
+        this.service,
+        C.LockCurrentState,
+        lockState,
+        this.currentLockedState
+      );
+      this.updateIfChanged(
+        this.service,
+        C.LockTargetState,
+        targetState,
+        this.targetLockedState
+      );
+      this.currentLockedState = lockState;
+      this.targetLockedState = targetState;
+      this.scheduleAutoLock(targetState);
+    } else if (event.name === ATTR.BATTERY_LEVEL) {
+      const level = Math.round(attrToNumber(event.last_read_state));
+      const C = this.platform.api.hap.Characteristic;
+      this.battery.updateCharacteristic(C.BatteryLevel, level);
+      this.battery.updateCharacteristic(
+        C.StatusLowBattery,
+        level < 20
+          ? C.StatusLowBattery.BATTERY_LEVEL_LOW
+          : C.StatusLowBattery.BATTERY_LEVEL_NORMAL
+      );
+    }
+  }
+
+  protected async pollState() {
+    const attrs = await this.platform.smartRentApi.getState<LockData>(
+      this.hubId,
+      this.deviceId
+    );
+    const locked = findBoolean(attrs, ATTR.LOCKED);
+    const C = this.platform.api.hap.Characteristic;
+    const newCurrent = this.toLockState(locked);
+    const newTarget = locked
+      ? C.LockTargetState.SECURED
+      : C.LockTargetState.UNSECURED;
+
+    if (newCurrent !== this.currentLockedState) {
+      this.log.info(
+        `[${this.accessory.displayName}] poll: state changed → ${
+          locked ? 'LOCKED' : 'UNLOCKED'
+        }`
+      );
+      this.service.updateCharacteristic(C.LockCurrentState, newCurrent);
+      this.service.updateCharacteristic(C.LockTargetState, newTarget);
+      this.currentLockedState = newCurrent;
+      this.targetLockedState = newTarget;
+      this.scheduleAutoLock(newTarget);
+    }
+  }
+
+  protected shutdown() {
+    super.shutdown();
+    if (this.autoLockTimer) {
+      clearTimeout(this.autoLockTimer);
+      this.autoLockTimer = undefined;
+    }
   }
 }
