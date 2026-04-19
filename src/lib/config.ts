@@ -20,6 +20,14 @@ export interface SmartRentPlatformConfig extends PlatformConfig {
   enableAutoLock?: boolean;
   autoLockDelayInMinutes?: number;
 
+  // Sensor behavior
+  /**
+   * Some SmartRent contact sensors report `true` for "open" instead of
+   * "closed". Set this to `true` to invert the polarity for all contact
+   * sensors. Defaults to `false`.
+   */
+  contactInverted?: boolean;
+
   // Tuning
   /** TTL for the per-device attribute cache. Default 5 seconds. */
   cacheTtlSeconds?: number;
@@ -86,6 +94,13 @@ export function validateConfig(
     log.error(
       'Config error: "pollingIntervalSeconds" must be a non-negative number.'
     );
+    ok = false;
+  }
+  if (
+    config.contactInverted !== undefined &&
+    typeof config.contactInverted !== 'boolean'
+  ) {
+    log.error('Config error: "contactInverted" must be a boolean.');
     ok = false;
   }
 
