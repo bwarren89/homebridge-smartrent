@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [4.1.0] (2026-04-19)
+
+Post-4.0.0 hardening pass. All additive — existing configs continue to work.
+
+### Features
+
+* **ws:** track Phoenix heartbeat acks and force-reconnect when the server stops responding. Catches zombie WebSocket connections that appear open but are dead.
+* **lock:** bypass the state cache for lock current/target reads. Cache staleness is acceptable for most accessories but not for a lock where HomeKit users need to trust the reported state.
+* **api:** callers can now opt out of the state cache on a per-request basis.
+* **accessories:** report plugin version as `FirmwareRevision` in HomeKit and use a shared battery service helper that also sets `ChargingState`.
+* **contactSensor:** implement the previously-documented `contactInverted` config option for sensors that report the inverse of HomeKit's convention.
+* **thermostat:** constrain setpoint minimum step to 0.5°C (roughly 1°F) for more predictable HomeKit controls.
+* **utils:** `attrToBoolean` now recognizes additional SmartRent word encodings (lock/contact/sensor tokens) so attribute parsing is resilient to device-specific variations.
+* **config:** `contactInverted` toggle exposed in the Homebridge UI schema.
+
+### Bug Fixes
+
+* **platform:** stop double-pushing restored accessories into the platform accessory list and properly clean up stale entries. Avoided a silent duplicate-accessory accumulation over long-running sessions.
+* **build:** fix ESLint glob \`src/**.ts\` to \`src/**/*.ts\` so nested files are actually linted.
+
+### Internal
+
+* Add \`PLUGIN_VERSION\` constant for consistent \`FirmwareRevision\` reporting across accessories.
+* Add regression tests for the 4.0.0 bug fixes (lock state parsing, dimmer WS handler, thermostat AUTO setpoint) so they don't silently regress in future refactors.
+
 ## [4.0.0] (2026-04-17)
 
 Major rewrite focused on correctness, reliability, and broader device support. **Breaking changes:** the underlying accessory architecture changed and several long-standing bugs that produced wrong HomeKit state are now fixed — if you had automations relying on the buggy behavior they may need adjustment.
