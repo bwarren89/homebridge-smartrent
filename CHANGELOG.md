@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [4.3.0] (2026-04-20)
+
+Security hardening and CI pipeline.
+
+### Security
+
+* **auth:** `session.json` is now written with `0o600` permissions (owner read/write only). Previously it was created with the default umask, which on most systems meant any user on the box could read your SmartRent bearer token. Existing session files have their permissions tightened on first read.
+* **auth:** plugin directory (`~/.homebridge/smartrent/`) is now created with `0o700` permissions.
+
+### Bug Fixes
+
+* **client:** SmartRent API responses returning `429 Too Many Requests` previously caused immediate failures that cascaded into repeated retries at full speed, risking account throttling or lockout. Now the client respects the `Retry-After` header (or waits 30s if absent) and retries once.
+* **client:** transient `5xx` server errors now retry once after a 5-second backoff instead of failing immediately.
+
+### Internal
+
+* **ci:** added GitHub Actions workflow (`.github/workflows/ci.yml`) running lint, type check, build, test, and package verification on every push and PR against Node.js 20 and 22. Includes a guard that fails the build if `src/` accidentally appears in the npm tarball.
 ## [4.2.1] (2026-04-20)
 
 Quality-of-life and test coverage improvements. No runtime behavior changes.

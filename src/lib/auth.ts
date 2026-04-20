@@ -19,6 +19,18 @@ import { jwtDecode } from 'jwt-decode';
 import { authenticator } from 'otplib';
 
 const USER_PREFIX = 'User:';
+
+/**
+ * File mode: owner read/write only. Prevents other users on the system
+ * from reading bearer tokens out of session.json.
+ */
+const SESSION_FILE_MODE = 0o600;
+
+/**
+ * Directory mode: owner read/write/execute only.
+ */
+const PLUGIN_DIR_MODE = 0o700;
+
 /** Credentials stored in config.json */
 type ConfigCredentials = Pick<
   SmartRentPlatformConfig,
@@ -140,6 +152,25 @@ export class SmartRentAuthClient {
   }
 
   /**
+   * Write session data to disk with restrictive permissions.
+   *
+   * session.json contains bearer tokens; we set 0o600 so only the file
+   * owner (the Homebridge process user) can read it.
+   */
+  private async _writeSessionFile(session: Session) {
+    const sessionStr = JSON.stringify(session, null, 2);
+    await fsPromises.writeFile(this.sessionPath, sessionStr, { mode: SESSION_FILE_MODE });
+    // Also set permissions explicitly in case the file already existed with
+    // looser permissions from a previous version.
+    try {
+      await fsPromises.chmod(this.sessionPath, SESSION_FILE_MODE);
+    } catch {
+      // chmod may fail on some platforms (e.g., Windows); best-effort.
+    }
+    this.log.debug('Saved session to', this.sessionPath);
+  }
+
+  /**
    * Request a new session using either basic or 2FA credentials
    * @param credentials username/password or two-factor authentication credentials
    * @param path API path to request session
@@ -171,13 +202,20 @@ export class SmartRentAuthClient {
           'utf8'
         );
         this.session = JSON.parse(sessionString) as Session;
+
+        // Tighten permissions on files written by older versions.
+        try {
+          await fsPromises.chmod(this.sessionPath, SESSION_FILE_MODE);
+        } catch {
+          // best-effort
+        }
       } catch (err) {
         this.log.error('Error reading saved session', err);
         await fsPromises.rm(this.sessionPath);
         this.session = null;
       }
     } else if (!existsSync(this.pluginPath)) {
-      await fsPromises.mkdir(this.pluginPath);
+      await fsPromises.mkdir(this.pluginPath, { mode: PLUGIN_DIR_MODE });
     }
   }
 
@@ -200,9 +238,7 @@ export class SmartRentAuthClient {
     };
 
     this.log.info(`${refreshed ? 'Refreshed' : 'Started'} SmartRent session`);
-    const sessionStr = JSON.stringify(this.session, null, 2);
-    await fsPromises.writeFile(this.sessionPath, sessionStr);
-    this.log.debug('Saved session to', this.sessionPath);
+    await this._writeSessionFile(this.session);
     return this.session;
   }
 
@@ -214,9 +250,7 @@ export class SmartRentAuthClient {
       webSocketToken: data,
       websocketExpires: SmartRentAuthClient._getExpireDate(exp),
     };
-    const sessionStr = JSON.stringify(this.session, null, 2);
-    await fsPromises.writeFile(this.sessionPath, sessionStr);
-    this.log.debug('Saved session to', this.sessionPath);
+    await this._writeSessionFile(this.session);
     return this.session;
   }
 

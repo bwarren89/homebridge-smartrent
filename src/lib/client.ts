@@ -3,6 +3,7 @@ import axios, {
   AxiosResponse,
   AxiosInstance,
   AxiosRequestHeaders,
+  AxiosError,
 } from 'axios';
 import {
   API_URL,
@@ -68,6 +69,18 @@ const REDACTED_HEADERS = new Set(['authorization', 'cookie', 'x-api-token']);
  */
 const AUTH_URL_FRAGMENTS = ['/sessions', '/auth', '/token', '/oauth'];
 
+/**
+ * Custom Axios config property to track whether a request is already a retry,
+ * preventing infinite retry loops.
+ */
+const RETRY_FLAG = '__isRetry';
+
+/** Default backoff when the server returns 429 without a Retry-After header. */
+const DEFAULT_RATE_LIMIT_DELAY_MS = 30_000;
+
+/** Delay before retrying on transient 5xx errors. */
+const TRANSIENT_RETRY_DELAY_MS = 5_000;
+
 function redactConfig(
   config: InternalAxiosRequestConfig
 ): Record<string, unknown> {
@@ -97,6 +110,49 @@ function isAuthUrl(url: string | undefined): boolean {
   return AUTH_URL_FRAGMENTS.some(frag => lower.includes(frag));
 }
 
+/**
+ * Parse the Retry-After header value. Supports both delta-seconds (integer)
+ * and HTTP-date formats. Returns milliseconds to wait, or the default if
+ * the header is missing or unparseable.
+ */
+function parseRetryAfterMs(
+  retryAfter: string | undefined,
+  fallbackMs: number
+): number {
+  if (!retryAfter) {
+    return fallbackMs;
+  }
+  // Try as integer seconds first.
+  const seconds = parseInt(retryAfter, 10);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+  // Try as HTTP-date.
+  const date = new Date(retryAfter);
+  if (!isNaN(date.getTime())) {
+    const delta = date.getTime() - Date.now();
+    return Math.max(0, delta);
+  }
+  return fallbackMs;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Type-safe helpers to get/set the retry flag on an Axios config object.
+ * Axios config is a complex type that doesn't have an index signature,
+ * so we cast through `unknown` to attach our custom property.
+ */
+function isRetry(config: InternalAxiosRequestConfig): boolean {
+  return !!(config as unknown as Record<string, unknown>)[RETRY_FLAG];
+}
+
+function markAsRetry(config: InternalAxiosRequestConfig): void {
+  (config as unknown as Record<string, unknown>)[RETRY_FLAG] = true;
+}
+
 export class SmartRentApiClient {
   private readonly authClient: SmartRentAuthClient;
   private readonly apiClient: AxiosInstance;
@@ -118,7 +174,10 @@ export class SmartRentApiClient {
       timeout: 15000,
     });
     apiClient.interceptors.request.use(this._handleRequest.bind(this));
-    apiClient.interceptors.response.use(this._handleResponse.bind(this));
+    apiClient.interceptors.response.use(
+      this._handleResponse.bind(this),
+      this._handleResponseError.bind(this)
+    );
     return apiClient;
   }
 
@@ -159,6 +218,49 @@ export class SmartRentApiClient {
       `Response ${response.status} from ${response.config.url}: ${body}`
     );
     return response;
+  }
+
+  /**
+   * Handle response errors with retry logic for rate-limiting (429) and
+   * transient server errors (5xx).
+   *
+   * Each request gets at most one retry to prevent infinite loops.
+   */
+  private async _handleResponseError(error: AxiosError): Promise<AxiosResponse> {
+    const config = error.config;
+    const status = error.response?.status;
+
+    // If there's no config (request never sent) or this is already a retry,
+    // don't retry again.
+    if (!config || isRetry(config)) {
+      throw error;
+    }
+
+    // Rate limited (429): wait for Retry-After then retry once.
+    if (status === 429) {
+      const retryAfter = error.response?.headers?.['retry-after'] as
+        | string
+        | undefined;
+      const delayMs = parseRetryAfterMs(retryAfter, DEFAULT_RATE_LIMIT_DELAY_MS);
+      this.log.warn(
+        `SmartRent API rate limited (429). Waiting ${Math.round(delayMs / 1000)}s before retrying...`
+      );
+      await sleep(delayMs);
+      markAsRetry(config);
+      return this.apiClient.request(config);
+    }
+
+    // Transient server error (5xx): retry once after a short delay.
+    if (status && status >= 500 && status < 600) {
+      this.log.warn(
+        `SmartRent API server error (${status}). Retrying in ${TRANSIENT_RETRY_DELAY_MS / 1000}s...`
+      );
+      await sleep(TRANSIENT_RETRY_DELAY_MS);
+      markAsRetry(config);
+      return this.apiClient.request(config);
+    }
+
+    throw error;
   }
 
   public async get<T, D = unknown>(
