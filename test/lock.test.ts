@@ -29,12 +29,20 @@ const ServiceType = {
 function createMockService() {
   const updates: Array<[unknown, unknown]> = [];
   const mockCharacteristic = {
-    onGet() { return mockCharacteristic; },
-    onSet() { return mockCharacteristic; },
+    onGet() {
+      return mockCharacteristic;
+    },
+    onSet() {
+      return mockCharacteristic;
+    },
   };
   const svc = {
-    setCharacteristic() { return svc; },
-    getCharacteristic() { return mockCharacteristic; },
+    setCharacteristic() {
+      return svc;
+    },
+    getCharacteristic() {
+      return mockCharacteristic;
+    },
     updateCharacteristic(key: unknown, value: unknown) {
       updates.push([key, value]);
     },
@@ -60,7 +68,14 @@ function createLockTestHarness() {
     id: 42,
     name: 'Front Door Lock',
     type: 'entry_control',
-    room: { hub_id: 7, id: 1, name: 'Main', icon: null, inserted_at: '', updated_at: '' },
+    room: {
+      hub_id: 7,
+      id: 1,
+      name: 'Main',
+      icon: null,
+      inserted_at: '',
+      updated_at: '',
+    },
     attributes: [{ name: 'locked', state: 'true' }],
   };
 
@@ -68,7 +83,9 @@ function createLockTestHarness() {
     context: { device: mockDevice },
     displayName: mockDevice.name,
     UUID: 'test-uuid-42',
-    getService(type: unknown) { return services.get(type) ?? null; },
+    getService(type: unknown) {
+      return services.get(type) ?? null;
+    },
     addService(type: unknown) {
       const svc = createMockService();
       services.set(type, svc);
@@ -77,7 +94,13 @@ function createLockTestHarness() {
   } as unknown as SmartRentAccessory;
 
   const noop = () => {};
-  const mockLog = { info: noop, warn: noop, error: noop, debug: noop, log: noop };
+  const mockLog = {
+    info: noop,
+    warn: noop,
+    error: noop,
+    debug: noop,
+    log: noop,
+  };
 
   const mockPlatform = {
     log: mockLog,
@@ -234,7 +257,11 @@ test('non-lock WS events are silently ignored', () => {
   const { fireWsEvent, lockService } = createLockTestHarness();
   const beforeCount = lockService._updates.length;
   fireWsEvent({ name: 'temperature', last_read_state: '72' });
-  assert.equal(lockService._updates.length, beforeCount, 'no updates should occur for non-lock events');
+  assert.equal(
+    lockService._updates.length,
+    beforeCount,
+    'no updates should occur for non-lock events'
+  );
 });
 
 // ---- No-op on duplicate state ----------------------------------------------
@@ -250,5 +277,9 @@ test('duplicate state does not push redundant updates', () => {
   fireWsEvent({ name: 'locked', last_read_state: 'true' });
   const secondCount = getUpdatesFor(LockCurrentState).length;
 
-  assert.equal(firstCount, secondCount, 'updateIfChanged should skip duplicate state');
+  assert.equal(
+    firstCount,
+    secondCount,
+    'updateIfChanged should skip duplicate state'
+  );
 });

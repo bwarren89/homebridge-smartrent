@@ -226,7 +226,9 @@ export class SmartRentApiClient {
    *
    * Each request gets at most one retry to prevent infinite loops.
    */
-  private async _handleResponseError(error: AxiosError): Promise<AxiosResponse> {
+  private async _handleResponseError(
+    error: AxiosError
+  ): Promise<AxiosResponse> {
     const config = error.config;
     const status = error.response?.status;
 
@@ -241,7 +243,10 @@ export class SmartRentApiClient {
       const retryAfter = error.response?.headers?.['retry-after'] as
         | string
         | undefined;
-      const delayMs = parseRetryAfterMs(retryAfter, DEFAULT_RATE_LIMIT_DELAY_MS);
+      const delayMs = parseRetryAfterMs(
+        retryAfter,
+        DEFAULT_RATE_LIMIT_DELAY_MS
+      );
       this.log.warn(
         `SmartRent API rate limited (429). Waiting ${Math.round(delayMs / 1000)}s before retrying...`
       );

@@ -159,7 +159,9 @@ export class SmartRentAuthClient {
    */
   private async _writeSessionFile(session: Session) {
     const sessionStr = JSON.stringify(session, null, 2);
-    await fsPromises.writeFile(this.sessionPath, sessionStr, { mode: SESSION_FILE_MODE });
+    await fsPromises.writeFile(this.sessionPath, sessionStr, {
+      mode: SESSION_FILE_MODE,
+    });
     // Also set permissions explicitly in case the file already existed with
     // looser permissions from a previous version.
     try {

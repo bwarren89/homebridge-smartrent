@@ -41,5 +41,8 @@ test('ATTR - object is frozen (as const)', () => {
   // `as const` makes the object readonly at the type level, but let's
   // verify the values haven't been accidentally mutated at runtime.
   const keys = Object.keys(ATTR);
-  assert.ok(keys.length >= 14, `Expected at least 14 ATTR keys, got ${keys.length}`);
+  assert.ok(
+    keys.length >= 14,
+    `Expected at least 14 ATTR keys, got ${keys.length}`
+  );
 });

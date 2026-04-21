@@ -8,9 +8,11 @@ import { validateConfig, SmartRentPlatformConfig } from '../src/lib/config.ts';
  */
 function createMockLogger() {
   const calls: { level: string; args: unknown[] }[] = [];
-  const handler = (level: string) => (...args: unknown[]) => {
-    calls.push({ level, args });
-  };
+  const handler =
+    (level: string) =>
+    (...args: unknown[]) => {
+      calls.push({ level, args });
+    };
   return {
     calls,
     logger: {
@@ -46,9 +48,14 @@ test('validateConfig - passes with minimal valid config', () => {
 
 test('validateConfig - fails when email is missing', () => {
   const { logger, calls } = createMockLogger();
-  const result = validateConfig(validConfig({ email: undefined as unknown as string }), logger);
+  const result = validateConfig(
+    validConfig({ email: undefined as unknown as string }),
+    logger
+  );
   assert.equal(result, false);
-  assert.ok(calls.some(c => c.level === 'error' && String(c.args[0]).includes('email')));
+  assert.ok(
+    calls.some(c => c.level === 'error' && String(c.args[0]).includes('email'))
+  );
 });
 
 test('validateConfig - fails when email is empty string', () => {
@@ -59,9 +66,16 @@ test('validateConfig - fails when email is empty string', () => {
 
 test('validateConfig - fails when password is missing', () => {
   const { logger, calls } = createMockLogger();
-  const result = validateConfig(validConfig({ password: undefined as unknown as string }), logger);
+  const result = validateConfig(
+    validConfig({ password: undefined as unknown as string }),
+    logger
+  );
   assert.equal(result, false);
-  assert.ok(calls.some(c => c.level === 'error' && String(c.args[0]).includes('password')));
+  assert.ok(
+    calls.some(
+      c => c.level === 'error' && String(c.args[0]).includes('password')
+    )
+  );
 });
 
 test('validateConfig - fails when password is empty string', () => {
@@ -80,7 +94,10 @@ test('validateConfig - passes when tfaSecret is omitted', () => {
 test('validateConfig - passes when tfaSecret is a non-empty string', () => {
   const { logger } = createMockLogger();
   assert.equal(
-    validateConfig(validConfig({ tfaSecret: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456' }), logger),
+    validateConfig(
+      validConfig({ tfaSecret: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456' }),
+      logger
+    ),
     true
   );
 });
@@ -93,7 +110,10 @@ test('validateConfig - fails when tfaSecret is empty string', () => {
 test('validateConfig - fails when tfaSecret is a number', () => {
   const { logger } = createMockLogger();
   assert.equal(
-    validateConfig(validConfig({ tfaSecret: 12345 as unknown as string }), logger),
+    validateConfig(
+      validConfig({ tfaSecret: 12345 as unknown as string }),
+      logger
+    ),
     false
   );
 });
@@ -102,40 +122,61 @@ test('validateConfig - fails when tfaSecret is a number', () => {
 
 test('validateConfig - passes when autoLockDelayInMinutes is a positive number', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ autoLockDelayInMinutes: 5 }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ autoLockDelayInMinutes: 5 }), logger),
+    true
+  );
 });
 
 test('validateConfig - fails when autoLockDelayInMinutes is zero', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ autoLockDelayInMinutes: 0 }), logger), false);
+  assert.equal(
+    validateConfig(validConfig({ autoLockDelayInMinutes: 0 }), logger),
+    false
+  );
 });
 
 test('validateConfig - fails when autoLockDelayInMinutes is negative', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ autoLockDelayInMinutes: -1 }), logger), false);
+  assert.equal(
+    validateConfig(validConfig({ autoLockDelayInMinutes: -1 }), logger),
+    false
+  );
 });
 
 // ---- cacheTtlSeconds -------------------------------------------------------
 
 test('validateConfig - passes when cacheTtlSeconds is 0 (disabled)', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ cacheTtlSeconds: 0 }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ cacheTtlSeconds: 0 }), logger),
+    true
+  );
 });
 
 test('validateConfig - passes when cacheTtlSeconds is a positive number', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ cacheTtlSeconds: 10 }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ cacheTtlSeconds: 10 }), logger),
+    true
+  );
 });
 
 test('validateConfig - fails when cacheTtlSeconds is negative', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ cacheTtlSeconds: -1 }), logger), false);
+  assert.equal(
+    validateConfig(validConfig({ cacheTtlSeconds: -1 }), logger),
+    false
+  );
 });
 
 test('validateConfig - fails when cacheTtlSeconds is a string', () => {
   const { logger } = createMockLogger();
   assert.equal(
-    validateConfig(validConfig({ cacheTtlSeconds: '5' as unknown as number }), logger),
+    validateConfig(
+      validConfig({ cacheTtlSeconds: '5' as unknown as number }),
+      logger
+    ),
     false
   );
 });
@@ -144,12 +185,18 @@ test('validateConfig - fails when cacheTtlSeconds is a string', () => {
 
 test('validateConfig - passes when pollingIntervalSeconds is 0 (disabled)', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ pollingIntervalSeconds: 0 }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ pollingIntervalSeconds: 0 }), logger),
+    true
+  );
 });
 
 test('validateConfig - fails when pollingIntervalSeconds is negative', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ pollingIntervalSeconds: -5 }), logger), false);
+  assert.equal(
+    validateConfig(validConfig({ pollingIntervalSeconds: -5 }), logger),
+    false
+  );
 });
 
 // ---- pollingOverrides ------------------------------------------------------
@@ -158,7 +205,14 @@ test('validateConfig - passes with valid pollingOverrides', () => {
   const { logger } = createMockLogger();
   assert.equal(
     validateConfig(
-      validConfig({ pollingOverrides: { locks: 10, thermostats: 60, switches: 30, sensors: 15 } }),
+      validConfig({
+        pollingOverrides: {
+          locks: 10,
+          thermostats: 60,
+          switches: 30,
+          sensors: 15,
+        },
+      }),
       logger
     ),
     true
@@ -169,13 +223,18 @@ test('validateConfig - warns on unknown pollingOverrides key', () => {
   const { logger, calls } = createMockLogger();
   const result = validateConfig(
     validConfig({
-      pollingOverrides: { locks: 10, cameras: 30 } as unknown as SmartRentPlatformConfig['pollingOverrides'],
+      pollingOverrides: {
+        locks: 10,
+        cameras: 30,
+      } as unknown as SmartRentPlatformConfig['pollingOverrides'],
     }),
     logger
   );
   // Unknown keys warn but don't fail.
   assert.equal(result, true);
-  assert.ok(calls.some(c => c.level === 'warn' && String(c.args[0]).includes('cameras')));
+  assert.ok(
+    calls.some(c => c.level === 'warn' && String(c.args[0]).includes('cameras'))
+  );
 });
 
 test('validateConfig - fails when pollingOverrides value is negative', () => {
@@ -198,7 +257,11 @@ test('validateConfig - fails when pollingOverrides is an array', () => {
   const { logger } = createMockLogger();
   assert.equal(
     validateConfig(
-      validConfig({ pollingOverrides: [10] as unknown as SmartRentPlatformConfig['pollingOverrides'] }),
+      validConfig({
+        pollingOverrides: [
+          10,
+        ] as unknown as SmartRentPlatformConfig['pollingOverrides'],
+      }),
       logger
     ),
     false
@@ -209,18 +272,27 @@ test('validateConfig - fails when pollingOverrides is an array', () => {
 
 test('validateConfig - passes when contactInverted is true', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ contactInverted: true }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ contactInverted: true }), logger),
+    true
+  );
 });
 
 test('validateConfig - passes when contactInverted is false', () => {
   const { logger } = createMockLogger();
-  assert.equal(validateConfig(validConfig({ contactInverted: false }), logger), true);
+  assert.equal(
+    validateConfig(validConfig({ contactInverted: false }), logger),
+    true
+  );
 });
 
 test('validateConfig - fails when contactInverted is a string', () => {
   const { logger } = createMockLogger();
   assert.equal(
-    validateConfig(validConfig({ contactInverted: 'yes' as unknown as boolean }), logger),
+    validateConfig(
+      validConfig({ contactInverted: 'yes' as unknown as boolean }),
+      logger
+    ),
     false
   );
 });

@@ -37,11 +37,10 @@ export class MotionSensorAccessory extends BaseAccessory {
 
   async handleMotionGet(): Promise<CharacteristicValue> {
     return this.hapCall('GET MotionDetected', async () => {
-      const attrs =
-        await this.platform.smartRentApi.getState<MotionSensorData>(
-          this.hubId,
-          this.deviceId
-        );
+      const attrs = await this.platform.smartRentApi.getState<MotionSensorData>(
+        this.hubId,
+        this.deviceId
+      );
       this.currentMotion = findBoolean(attrs, ATTR.MOTION);
       return this.currentMotion;
     });

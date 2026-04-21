@@ -127,9 +127,9 @@ Homebridge SmartRent currently supports these devices through a SmartRent hub:
 
 ### Sensor behavior
 
-| Property          | Type    | Default | Description                                                                                         |
-| ----------------- | ------- | ------- | --------------------------------------------------------------------------------------------------- |
-| `contactInverted` | boolean | `false` | Flip contact sensor polarity if your sensors report `true` for open and `false` for closed          |
+| Property          | Type    | Default | Description                                                                                |
+| ----------------- | ------- | ------- | ------------------------------------------------------------------------------------------ |
+| `contactInverted` | boolean | `false` | Flip contact sensor polarity if your sensors report `true` for open and `false` for closed |
 
 ### Tuning
 

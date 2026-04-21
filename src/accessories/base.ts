@@ -135,20 +135,18 @@ export abstract class BaseAccessory {
 
   private async _handleBatteryLevelGet(): Promise<CharacteristicValue> {
     return this.hapCall('GET BatteryLevel', async () => {
-      const data = await this.platform.smartRentApi.getData<BaseDeviceResponse & { battery_level?: number | null }>(
-        this.hubId,
-        this.deviceId
-      );
+      const data = await this.platform.smartRentApi.getData<
+        BaseDeviceResponse & { battery_level?: number | null }
+      >(this.hubId, this.deviceId);
       return Math.round(Number(data.battery_level ?? 100));
     });
   }
 
   private async _handleStatusLowBatteryGet(): Promise<CharacteristicValue> {
     return this.hapCall('GET StatusLowBattery', async () => {
-      const data = await this.platform.smartRentApi.getData<BaseDeviceResponse & { battery_level?: number | null }>(
-        this.hubId,
-        this.deviceId
-      );
+      const data = await this.platform.smartRentApi.getData<
+        BaseDeviceResponse & { battery_level?: number | null }
+      >(this.hubId, this.deviceId);
       const level = Number(data.battery_level ?? 100);
       const C = this.platform.api.hap.Characteristic;
       return level < LOW_BATTERY_THRESHOLD

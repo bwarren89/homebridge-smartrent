@@ -56,12 +56,7 @@ export class LeakSensorAccessory extends BaseAccessory {
     const C = this.platform.api.hap.Characteristic;
     const next = this.toLeakValue(attrToBoolean(event.last_read_state));
     if (
-      this.updateIfChanged(
-        this.service,
-        C.LeakDetected,
-        next,
-        this.currentLeak
-      )
+      this.updateIfChanged(this.service, C.LeakDetected, next, this.currentLeak)
     ) {
       this.currentLeak = next;
       this.log.info(
