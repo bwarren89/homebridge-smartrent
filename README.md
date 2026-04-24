@@ -33,7 +33,6 @@ npm i -g @prismwizard/homebridge-smartrent
 - [Supported Devices](#-supported-devices)
 - [Getting Started](#-getting-started)
 - [Configuration Reference](#-configuration-reference)
-- [How It Works](#-how-it-works)
 - [Troubleshooting](#-troubleshooting)
 - [What's Different from Upstream](#-whats-different-from-upstream)
 - [Development](#-development)
@@ -154,7 +153,7 @@ All default to `true`. Set to `false` to hide a device type from HomeKit.
 | Property | Type | Default | Description |
 |:---|:---|:---:|:---|
 | `cacheTtlSeconds` | `integer` | `5` | How long cached device state is considered fresh. WebSocket events invalidate the cache immediately. Set to `0` to disable. |
-| `pollingIntervalSeconds` | `integer` | `30` | Fallback polling interval for when WebSocket events are missed. Set to `0` to disable. |
+| `pollingIntervalSeconds` | `integer` | `30` | Fallback polling interval when real-time updates are missed. Set to `0` to disable. |
 | `pollingOverrides` | `object` | &nbsp; | Per-device-type polling intervals in seconds. Keys: `locks`, `thermostats`, `switches`, `sensors`. |
 | `useCelsiusDisplay` | `boolean` | `false` | Show thermostat temperatures in Celsius in the Home app |
 
@@ -196,23 +195,6 @@ All default to `true`. Set to `false` to hide a device type from HomeKit.
 ```
 
 </details>
-
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
-
-## 🔌 How It Works
-
-The plugin connects to SmartRent's API through two channels that work in tandem:
-
-<p align="center">
-  <img src="./assets/architecture-diagram.svg" alt="Architecture diagram showing Apple Home connecting to Homebridge, which uses homebridge-smartrent with a Cache and Poller to communicate with SmartRent Cloud via REST API and WebSocket" width="600">
-</p>
-
-| Layer | Role |
-|:---|:---|
-| **REST API** | Reads and writes device state (lock/unlock, set temperature, etc.) |
-| **WebSocket** | Receives real-time push updates via Phoenix channels when device state changes |
-| **Cache** | Reduces redundant API calls during HomeKit's characteristic read bursts |
-| **Poller** | Safety-net that catches events the WebSocket misses (network hiccups, server-side drops) |
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
 
